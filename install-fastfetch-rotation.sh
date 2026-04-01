@@ -1,588 +1,151 @@
 #!/bin/bash
-# install-fastfetch-rotation.sh
-# Universal install script for fastfetch image rotation system
 
-set -e  # Exit on error
+# Fastfetch Configuration Installer
+# Auto-generated - DO NOT EDIT MANUALLY
+
+set -e
 
 # Colors for output
-RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-NC='\033[0m' # No Color
+RED='\033[0;31m'
+NC='\033[0m'
 
-# Get current user's home directory
-USER_HOME="$HOME"
-CONFIG_DIR="$USER_HOME/.config/fastfetch"
-FISH_CONFIG="$USER_HOME/.config/fish/config.fish"
-FISH_FUNCTIONS="$USER_HOME/.config/fish/functions"
+echo -e "${GREEN}Installing Fastfetch configuration...${NC}"
 
-# Default settings (can be overridden by user)
-ASPECT_WIDTH=1
-ASPECT_HEIGHT=1
-IMAGE_WIDTH=600
-LOGO_HEIGHT=15
-SIXEL_TYPE="sixel"
-ROUNDED_CORNERS=false
-CORNER_RADIUS=30
+# Detect OS
+detect_os() {
+    if [ -f /etc/os-release ]; then
+        . /etc/os-release
+        echo "$ID"
+    else
+        echo "unknown"
+    fi
+}
 
-# Parse command line arguments
-while [[ $# -gt 0 ]]; do
-    case $1 in
-        --aspect)
-            ASPECT_WIDTH=$(echo $2 | cut -d: -f1)
-            ASPECT_HEIGHT=$(echo $2 | cut -d: -f2)
-            shift 2
+# Install fastfetch if not present
+install_fastfetch() {
+    if command -v fastfetch &> /dev/null; then
+        echo -e "${GREEN}✓ Fastfetch already installed${NC}"
+        return 0
+    fi
+    
+    echo -e "${YELLOW}Installing fastfetch...${NC}"
+    OS=$(detect_os)
+    
+    case "$OS" in
+        ubuntu|debian)
+            sudo apt update && sudo apt install -y fastfetch
             ;;
-        --width)
-            IMAGE_WIDTH=$2
-            shift 2
+        arch|manjaro)
+            sudo pacman -S --noconfirm fastfetch
             ;;
-        --logo-height)
-            LOGO_HEIGHT=$2
-            shift 2
-            ;;
-        --image-type)
-            SIXEL_TYPE=$2
-            shift 2
-            ;;
-        --rounded-corners)
-            ROUNDED_CORNERS=true
-            shift
-            ;;
-        --corner-radius)
-            CORNER_RADIUS=$2
-            shift 2
-            ;;
-        --help)
-            echo "Usage: $0 [OPTIONS]"
-            echo ""
-            echo "Options:"
-            echo "  --aspect W:H         Aspect ratio for cropping (default: 1:1)"
-            echo "  --width N            Max width in pixels (default: 600)"
-            echo "  --logo-height N      Fastfetch logo height (default: 15)"
-            echo "  --image-type TYPE    Image type (sixel, kitty, iterm2, auto) (default: sixel)"
-            echo "  --rounded-corners    Enable rounded corners on images"
-            echo "  --corner-radius N    Corner radius in pixels (default: 30)"
-            echo "  --help               Show this help message"
-            exit 0
+        fedora)
+            sudo dnf install -y fastfetch
             ;;
         *)
-            echo "Unknown option: $1"
-            echo "Use --help for usage"
+            echo -e "${RED}Unsupported OS. Please install fastfetch manually.${NC}"
+            echo "Visit: https://github.com/fastfetch-cli/fastfetch"
             exit 1
             ;;
     esac
-done
-
-# Welcome message
-echo ""
-echo -e "${GREEN}╔════════════════════════════════════════╗${NC}"
-echo -e "${GREEN}║  Fastfetch Image Rotation Installer   ║${NC}"
-echo -e "${GREEN}╚════════════════════════════════════════╝${NC}"
-echo ""
-echo -e "${BLUE}Installing for user: $(whoami)${NC}"
-echo -e "${BLUE}Home directory: $USER_HOME${NC}"
-echo ""
-
-# Check prerequisites
-echo -e "${YELLOW}[1/7] Checking prerequisites...${NC}"
-
-# Check if fastfetch is installed
-if ! command -v fastfetch &> /dev/null; then
-    echo -e "${RED}✗ fastfetch is not installed${NC}"
-    echo ""
-    echo "Please install fastfetch first:"
-    echo "  Arch Linux:     sudo pacman -S fastfetch"
-    echo "  Debian/Ubuntu:  sudo apt install fastfetch"
-    echo "  Fedora:         sudo dnf install fastfetch"
-    echo "  macOS:          brew install fastfetch"
-    echo "  Or from source: https://github.com/fastfetch-cli/fastfetch"
-    exit 1
-fi
-echo -e "${GREEN}✓ fastfetch $(fastfetch --version | head -1)${NC}"
-
-# Check if ImageMagick is installed
-if ! command -v convert &> /dev/null && ! command -v magick &> /dev/null; then
-    echo -e "${RED}✗ ImageMagick is not installed${NC}"
-    echo ""
-    echo "Please install ImageMagick first:"
-    echo "  Arch Linux:     sudo pacman -S imagemagick"
-    echo "  Debian/Ubuntu:  sudo apt install imagemagick"
-    echo "  Fedora:         sudo dnf install ImageMagick"
-    echo "  macOS:          brew install imagemagick"
-    exit 1
-fi
-echo -e "${GREEN}✓ ImageMagick installed${NC}"
-
-# Check if Fish shell is installed
-if ! command -v fish &> /dev/null; then
-    echo -e "${RED}✗ Fish shell is not installed${NC}"
-    echo ""
-    echo "Please install Fish shell first:"
-    echo "  Arch Linux:     sudo pacman -S fish"
-    echo "  Debian/Ubuntu:  sudo apt install fish"
-    echo "  Fedora:         sudo dnf install fish"
-    echo "  macOS:          brew install fish"
-    exit 1
-fi
-echo -e "${GREEN}✓ Fish shell $(fish --version | cut -d' ' -f3)${NC}"
-
-# Check terminal sixel support (optional)
-echo -e "${YELLOW}  (Optional) Checking terminal support...${NC}"
-if [[ "$TERM" == "foot" ]] || [[ "$TERM" == "xterm"* ]] || [[ "$TERM" == "kitty" ]]; then
-    echo -e "${GREEN}  ✓ Terminal $TERM likely supports images${NC}"
-else
-    echo -e "${YELLOW}  ⚠ Terminal $TERM may not support images${NC}"
-    echo "    For best results, use Foot, Kitty, or a terminal with sixel support"
-fi
-
-echo ""
-echo -e "${YELLOW}[2/7] Creating directories...${NC}"
-
-# Create directories
-mkdir -p "$CONFIG_DIR/images"
-mkdir -p "$CONFIG_DIR/cropped"
-mkdir -p "$FISH_FUNCTIONS"
-
-echo -e "${GREEN}✓ Created: $CONFIG_DIR${NC}"
-echo -e "${GREEN}✓ Created: $CONFIG_DIR/images${NC}"
-echo -e "${GREEN}✓ Created: $CONFIG_DIR/cropped${NC}"
-echo -e "${GREEN}✓ Created: $FISH_FUNCTIONS${NC}"
-
-echo ""
-echo -e "${YELLOW}[3/7] Installing fastfetch configuration...${NC}"
-
-# Create fastfetch config with user's home directory (height only, width auto)
-cat > "$CONFIG_DIR/config.jsonc" << EOF
-{
-    "\$schema": "https://github.com/fastfetch-cli/fastfetch/raw/dev/doc/json_schema.json",
-    "logo": {
-        "source": "$CONFIG_DIR/current-image.jpg",
-        "type": "$SIXEL_TYPE",
-        "height": $LOGO_HEIGHT,
-        "padding": {
-            "top": 2,
-            "left": 3
-        }
-    },
-    "display": {
-        "separator": "  ",
-        "color": "white",
-        "constants": ["\\u001b[37m", "\\u001b[38;5;16m", "\\u001b[38;5;17m", "\\u001b[38;5;18m"]
-    },
-    "modules": [
-        "break",
-        {
-            "type": "custom",
-            "key": "╭───────────────────────────────────╮"
-        },
-        {
-            "type": "kernel",
-            "key": "│ {\$2}{\$1}  kernel",
-            "format": "{\$2}{release>22}{\$1} │"
-        },
-        {
-            "type": "command",
-            "key": "│   uptime",
-            "text": "uptime -p | cut -d ' ' -f 2-",
-            "format": "{>22} │"
-        },
-        {
-            "type": "shell",
-            "key": "│ {\$2}{\$1}  shell ",
-            "format": "{\$2}{pretty-name>22}{\$1} │"
-        },
-        {
-            "type": "command",
-            "key": "│ {\$3}{\$1}  mem   ",
-            "text": "free -m | awk 'NR==2{printf \"%.2f GiB / %.2f GiB\",\$3/1024,\$2/1024}'",
-            "format": "{\$3}{>22}{\$1} │"
-        },
-        {
-            "type": "packages",
-            "key": "│   pkgs  ",
-            "format": "{all>22} │"
-        },
-        {
-            "type": "command",
-            "key": "│ {\$2}{\$1}  user  ",
-            "text": "echo \$USER",
-            "format": "{\$2}{>22}{\$1} │"
-        },
-        {
-            "type": "command",
-            "key": "│   hname ",
-            "text": "hostnamectl hostname",
-            "format": "{>22} │"
-        },
-        {
-            "type": "os",
-            "key": "│ {\$4}󰻀{\$1}  distro",
-            "format": "{\$4}{pretty-name>22}{\$1} │"
-        },
-        {
-            "type": "custom",
-            "key": "╰───────────────────────────────────╯"
-        },
-        "break"
-    ]
 }
-EOF
 
-echo -e "${GREEN}✓ Fastfetch config created${NC}"
-
-echo ""
-echo -e "${YELLOW}[4/7] Installing crop script...${NC}"
-
-# Create crop script with auto-clean
-cat > "$CONFIG_DIR/crop-image.sh" << EOF
-#!/bin/bash
-INPUT_DIR="$CONFIG_DIR/images"
-OUTPUT_DIR="$CONFIG_DIR/cropped"
-mkdir -p "\$OUTPUT_DIR"
-
-# Settings
-MAX_WIDTH=$IMAGE_WIDTH
-ASPECT_W=$ASPECT_WIDTH
-ASPECT_H=$ASPECT_HEIGHT
-QUALITY=90
-ROUNDED=$ROUNDED_CORNERS
-CORNER_RADIUS=$CORNER_RADIUS
-
-echo "Processing images with aspect ratio \$ASPECT_W:\$ASPECT_H..."
-
-# Clean old cropped images
-echo "Cleaning old cropped images..."
-rm -f "\$OUTPUT_DIR"/*.{jpg,png}
-echo "✓ Old images removed"
-
-# Count processed images
-count=0
-
-for ext in png jpg jpeg gif; do
-    for img in "\$INPUT_DIR"/*.\$ext; do
-        if [ -f "\$img" ]; then
-            filename=\$(basename "\$img")
-            output="\$OUTPUT_DIR/\${filename%.*}.jpg"
-            
-            # Get original dimensions
-            dimensions=\$(identify -format "%wx%h" "\$img" 2>/dev/null)
-            if [ -z "\$dimensions" ]; then
-                echo "✗ Failed to read: \$filename"
-                continue
-            fi
-            
-            width=\$(echo \$dimensions | cut -dx -f1)
-            height=\$(echo \$dimensions | cut -dx -f2)
-            
-            # Calculate target dimensions
-            target_height=\$((width * ASPECT_H / ASPECT_W))
-            
-            if [ \$target_height -le \$height ]; then
-                offset_y=\$(((height - target_height) / 2))
-                offset_x=0
-                crop_geometry="\${width}x\${target_height}+\${offset_x}+\${offset_y}"
-            else
-                target_width=\$((height * ASPECT_W / ASPECT_H))
-                offset_x=\$(((width - target_width) / 2))
-                offset_y=0
-                crop_geometry="\${target_width}x\${height}+\${offset_x}+\${offset_y}"
-            fi
-            
-            # Crop and resize
-            convert "\$img" -crop "\$crop_geometry" -resize "\${MAX_WIDTH}x" -quality \$QUALITY "\$output" 2>/dev/null
-            
-            if [ \$? -eq 0 ]; then
-                echo "✓ Processed: \$filename"
-                ((count++))
-            else
-                echo "✗ Failed: \$filename"
-            fi
+# Install fish shell if needed
+install_fish() {
+    if [ -d "$HOME/.config/fish" ] || [ -f "$HOME/.config/fish/config.fish" ]; then
+        if ! command -v fish &> /dev/null; then
+            echo -e "${YELLOW}Installing fish shell...${NC}"
+            OS=$(detect_os)
+            case "$OS" in
+                ubuntu|debian)
+                    sudo apt update && sudo apt install -y fish
+                    ;;
+                arch|manjaro)
+                    sudo pacman -S --noconfirm fish
+                    ;;
+                fedora)
+                    sudo dnf install -y fish
+                    ;;
+                *)
+                    echo -e "${YELLOW}Fish shell not installed. Please install manually.${NC}"
+                    ;;
+            esac
+        else
+            echo -e "${GREEN}✓ Fish shell already installed${NC}"
         fi
-    done
-done
-
-EOF
-
-# Add rounded corners if enabled
-if [ "$ROUNDED_CORNERS" = true ]; then
-    cat >> "$CONFIG_DIR/crop-image.sh" << 'EOF'
-
-# Add rounded corners if enabled
-if [ "$ROUNDED" = true ]; then
-    echo "Adding rounded corners (radius: ${CORNER_RADIUS}px)..."
-    for img in "$OUTPUT_DIR"/*.jpg; do
-        if [ -f "$img" ]; then
-            temp_img="/tmp/rounded_$$.jpg"
-            convert "$img" \
-                \( +clone -alpha extract \
-                   -draw "roundRectangle 0,0 %[fx:w],%[fx:h] ${CORNER_RADIUS},${CORNER_RADIUS}" \
-                   -alpha copy \) \
-                -compose Dst_In -composite \
-                "$temp_img" 2>/dev/null
-            mv "$temp_img" "$img"
-        fi
-    done
-    echo "✓ Rounded corners added"
-fi
-EOF
-fi
-
-cat >> "$CONFIG_DIR/crop-image.sh" << EOF
-
-if [ \$count -eq 0 ]; then
-    echo "⚠ No images found in \$INPUT_DIR"
-    echo "  Add images to: \$INPUT_DIR"
-else
-    echo "Done! Processed \$count images to \$OUTPUT_DIR"
-fi
-EOF
-
-chmod +x "$CONFIG_DIR/crop-image.sh"
-echo -e "${GREEN}✓ Crop script installed${NC}"
-
-echo ""
-echo -e "${YELLOW}[5/7] Installing rotate script...${NC}"
-
-# Create rotate script
-cat > "$CONFIG_DIR/rotate-images.sh" << EOF
-#!/bin/bash
-CONFIG_DIR="$CONFIG_DIR"
-IMAGES_DIR="\$CONFIG_DIR/cropped"
-STATE_FILE="\$CONFIG_DIR/image-index.txt"
-
-# Get list of images
-images=()
-for ext in jpg png; do
-    for img in "\$IMAGES_DIR"/*.\$ext; do
-        if [ -f "\$img" ]; then
-            images+=("\$img")
-        fi
-    done
-done
-
-if [ \${#images[@]} -eq 0 ]; then
-    echo "No images found in \$IMAGES_DIR"
-    exit 1
-fi
-
-# Read current index or start at 0
-if [ -f "\$STATE_FILE" ]; then
-    current_index=\$(cat "\$STATE_FILE")
-else
-    current_index=0
-fi
-
-# Calculate next index
-next_index=\$(( (current_index + 1) % \${#images[@]} ))
-
-# Get the next image
-next_image="\${images[\$next_index]}"
-
-# Create a unique filename with timestamp
-timestamp=\$(date +%s)
-unique_file="current-image-\$timestamp.jpg"
-cp "\$next_image" "\$CONFIG_DIR/\$unique_file"
-
-# Clean up old files - keep only the last 1
-cd "\$CONFIG_DIR"
-ls -t current-image-*.jpg 2>/dev/null | tail -n +2 | xargs -r rm
-
-# Save the new index
-echo "\$next_index" > "\$STATE_FILE"
-
-# Output the filename
-echo "\$CONFIG_DIR/\$unique_file"
-EOF
-
-chmod +x "$CONFIG_DIR/rotate-images.sh"
-echo -e "${GREEN}✓ Rotate script installed${NC}"
-
-echo ""
-echo -e "${YELLOW}[6/7] Installing fish functions...${NC}"
-
-# Backup existing config if needed
-if [ -f "$FISH_CONFIG" ]; then
-    if ! grep -q "Fastfetch image management functions" "$FISH_CONFIG" 2>/dev/null; then
-        cp "$FISH_CONFIG" "$FISH_CONFIG.backup.$(date +%s)"
-        echo -e "${GREEN}✓ Backup created: $FISH_CONFIG.backup.$(date +%s)${NC}"
     fi
-fi
+}
 
-# Add functions to fish config
-cat >> "$FISH_CONFIG" << 'EOF'
-
-# Fastfetch image management functions
-set -g CONFIG_DIR "$HOME/.config/fastfetch"
-
-# Rotate to next image
-function next-image
-    set new_image (bash "$CONFIG_DIR/rotate-images.sh")
+# Write file from base64 encoded content
+write_file() {
+    local filepath="$1"
+    local content_b64="$2"
+    local mode="${3:-644}"
     
-    if test -n "$new_image"
-        for old in $CONFIG_DIR/current-image-*.jpg
-            if test "$old" != "$new_image"
-                rm -f "$old"
-            end
-        end
-        sed -i "s|\"source\": \".*\"|\"source\": \"$new_image\"|" "$CONFIG_DIR/config.jsonc"
-        clear
-        fastfetch
-    else
-        echo "Failed to rotate image"
-    end
-end
+    mkdir -p "$(dirname "$filepath")"
+    echo "$content_b64" | base64 -d > "$filepath"
+    chmod "$mode" "$filepath"
+    echo -e "${GREEN}✓ Created: $filepath${NC}"
+}
 
-# Random image
-function random-image
-    set images (find $CONFIG_DIR/cropped -type f \( -name "*.jpg" -o -name "*.png" \) 2>/dev/null)
+# Main installation
+main() {
+    echo -e "${YELLOW}Writing configuration files...${NC}"
     
-    if test (count $images) -gt 0
-        set random_img $images[(random 1 (count $images))]
-        set timestamp (date +%s)
-        set new_image "$CONFIG_DIR/current-image-$timestamp.jpg"
-        cp "$random_img" "$new_image"
+    # File: .config/fastfetch/config.jsonc
+    write_file "$HOME/.config/fastfetch/config.jsonc" "ewogICAgIiRzY2hlbWEiOiAiaHR0cHM6Ly9naXRodWIuY29tL2Zhc3RmZXRjaC1jbGkvZmFzdGZldGNoL3Jhdy9kZXYvZG9jL2pzb25fc2NoZW1hLmpzb24iLAogICAgImxvZ28iOiB7CiAgICAgICAgInNvdXJjZSI6ICIvaG9tZS9hYmR1bHJhaG1hbi8uY29uZmlnL2Zhc3RmZXRjaC9jdXJyZW50LWltYWdlLTE3NzUwNjE0NTMuanBnIiwKICAgICAgICAidHlwZSI6ICJzaXhlbCIsCiAgICAgICAgImhlaWdodCI6IDE1LAogICAgICAgICJwYWRkaW5nIjogewogICAgICAgICAgICAidG9wIjogMiwKICAgICAgICAgICAgImxlZnQiOiAzCiAgICAgICAgfQogICAgfSwKICAgICJkaXNwbGF5IjogewogICAgICAgICJzZXBhcmF0b3IiOiAiICAiLAogICAgICAgICJjb2xvciI6ICJ3aGl0ZSIsCiAgICAgICAgImNvbnN0YW50cyI6IFsiXHUwMDFiWzM3bSIsICJcdTAwMWJbMzg7NTsxNm0iLCAiXHUwMDFiWzM4OzU7MTdtIiwgIlx1MDAxYlszODs1OzE4bSJdCiAgICB9LAogICAgIm1vZHVsZXMiOiBbCiAgICAgICAgImJyZWFrIiwKICAgICAgICB7CiAgICAgICAgICAgICJ0eXBlIjogImN1c3RvbSIsCiAgICAgICAgICAgICJrZXkiOiAi4pWt4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pWuIgogICAgICAgIH0sCiAgICAgICAgewogICAgICAgICAgICAidHlwZSI6ICJrZXJuZWwiLAogICAgICAgICAgICAia2V5IjogIuKUgiB7JDJ975GzeyQxfSAga2VybmVsIiwKICAgICAgICAgICAgImZvcm1hdCI6ICJ7JDJ9e3JlbGVhc2U+MjJ9eyQxfSDilIIiCiAgICAgICAgfSwKICAgICAgICB7CiAgICAgICAgICAgICJ0eXBlIjogImNvbW1hbmQiLAogICAgICAgICAgICAia2V5IjogIuKUgiDujoUgIHVwdGltZSIsCiAgICAgICAgICAgICJ0ZXh0IjogInVwdGltZSAtcCB8IGN1dCAtZCAnICcgLWYgMi0iLAogICAgICAgICAgICAiZm9ybWF0IjogIns+MjJ9IOKUgiIKICAgICAgICB9LAogICAgICAgIHsKICAgICAgICAgICAgInR5cGUiOiAic2hlbGwiLAogICAgICAgICAgICAia2V5IjogIuKUgiB7JDJ975KJeyQxfSAgc2hlbGwgIiwKICAgICAgICAgICAgImZvcm1hdCI6ICJ7JDJ9e3ByZXR0eS1uYW1lPjIyfXskMX0g4pSCIgogICAgICAgIH0sCiAgICAgICAgewogICAgICAgICAgICAidHlwZSI6ICJjb21tYW5kIiwKICAgICAgICAgICAgImtleSI6ICLilIIgeyQzfe6/hXskMX0gIG1lbSAgICIsCiAgICAgICAgICAgICJ0ZXh0IjogImZyZWUgLW0gfCBhd2sgJ05SPT0ye3ByaW50ZiBcIiUuMmYgR2lCIC8gJS4yZiBHaUJcIiwkMy8xMDI0LCQyLzEwMjR9JyIsCiAgICAgICAgICAgICJmb3JtYXQiOiAieyQzfXs+MjJ9eyQxfSDilIIiCiAgICAgICAgfSwKICAgICAgICB7CiAgICAgICAgICAgICJ0eXBlIjogInBhY2thZ2VzIiwKICAgICAgICAgICAgImtleSI6ICLilIIg75KHICBwa2dzICAiLAogICAgICAgICAgICAiZm9ybWF0IjogInthbGw+MjJ9IOKUgiIKICAgICAgICB9LAogICAgICAgIHsKICAgICAgICAgICAgInR5cGUiOiAiY29tbWFuZCIsCiAgICAgICAgICAgICJrZXkiOiAi4pSCIHskMn3vgId7JDF9ICB1c2VyICAiLAogICAgICAgICAgICAidGV4dCI6ICJlY2hvICRVU0VSIiwKICAgICAgICAgICAgImZvcm1hdCI6ICJ7JDJ9ez4yMn17JDF9IOKUgiIKICAgICAgICB9LAogICAgICAgIHsKICAgICAgICAgICAgInR5cGUiOiAiY29tbWFuZCIsCiAgICAgICAgICAgICJrZXkiOiAi4pSCIO+EiCAgaG5hbWUgIiwKICAgICAgICAgICAgInRleHQiOiAiaG9zdG5hbWVjdGwgaG9zdG5hbWUiLAogICAgICAgICAgICAiZm9ybWF0IjogIns+MjJ9IOKUgiIKICAgICAgICB9LAogICAgICAgIHsKICAgICAgICAgICAgInR5cGUiOiAib3MiLAogICAgICAgICAgICAia2V5IjogIuKUgiB7JDR987C7gHskMX0gIGRpc3RybyIsCiAgICAgICAgICAgICJmb3JtYXQiOiAieyQ0fXtwcmV0dHktbmFtZT4yMn17JDF9IOKUgiIKICAgICAgICB9LAogICAgICAgIHsKICAgICAgICAgICAgInR5cGUiOiAiY3VzdG9tIiwKICAgICAgICAgICAgImtleSI6ICLilbDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDila8iCiAgICAgICAgfSwKICAgICAgICAiYnJlYWsiCiAgICBdCn0K" 644
+    
+    # File: .config/fastfetch/crop-image.sh
+    write_file "$HOME/.config/fastfetch/crop-image.sh" "IyEvYmluL2Jhc2gKSU5QVVRfRElSPSIvaG9tZS9hYmR1bHJhaG1hbi8uY29uZmlnL2Zhc3RmZXRjaC9pbWFnZXMiCk9VVFBVVF9ESVI9Ii9ob21lL2FiZHVscmFobWFuLy5jb25maWcvZmFzdGZldGNoL2Nyb3BwZWQiCm1rZGlyIC1wICIkT1VUUFVUX0RJUiIKCiMgU2V0dGluZ3MKTUFYX1dJRFRIPTYwMApBU1BFQ1RfVz0xCkFTUEVDVF9IPTEKUVVBTElUWT05MApST1VOREVEPWZhbHNlCkNPUk5FUl9SQURJVVM9MzAKCmVjaG8gIlByb2Nlc3NpbmcgaW1hZ2VzIHdpdGggYXNwZWN0IHJhdGlvICRBU1BFQ1RfVzokQVNQRUNUX0guLi4iCgojIENsZWFuIG9sZCBjcm9wcGVkIGltYWdlcwplY2hvICJDbGVhbmluZyBvbGQgY3JvcHBlZCBpbWFnZXMuLi4iCnJtIC1mICIkT1VUUFVUX0RJUiIvKi57anBnLHBuZ30KZWNobyAi4pyTIE9sZCBpbWFnZXMgcmVtb3ZlZCIKCiMgQ291bnQgcHJvY2Vzc2VkIGltYWdlcwpjb3VudD0wCgpmb3IgZXh0IGluIHBuZyBqcGcganBlZyBnaWY7IGRvCiAgICBmb3IgaW1nIGluICIkSU5QVVRfRElSIi8qLiRleHQ7IGRvCiAgICAgICAgaWYgWyAtZiAiJGltZyIgXTsgdGhlbgogICAgICAgICAgICBmaWxlbmFtZT0kKGJhc2VuYW1lICIkaW1nIikKICAgICAgICAgICAgb3V0cHV0PSIkT1VUUFVUX0RJUi8ke2ZpbGVuYW1lJS4qfS5qcGciCiAgICAgICAgICAgIAogICAgICAgICAgICAjIEdldCBvcmlnaW5hbCBkaW1lbnNpb25zCiAgICAgICAgICAgIGRpbWVuc2lvbnM9JChpZGVudGlmeSAtZm9ybWF0ICIld3glaCIgIiRpbWciIDI+L2Rldi9udWxsKQogICAgICAgICAgICBpZiBbIC16ICIkZGltZW5zaW9ucyIgXTsgdGhlbgogICAgICAgICAgICAgICAgZWNobyAi4pyXIEZhaWxlZCB0byByZWFkOiAkZmlsZW5hbWUiCiAgICAgICAgICAgICAgICBjb250aW51ZQogICAgICAgICAgICBmaQogICAgICAgICAgICAKICAgICAgICAgICAgd2lkdGg9JChlY2hvICRkaW1lbnNpb25zIHwgY3V0IC1keCAtZjEpCiAgICAgICAgICAgIGhlaWdodD0kKGVjaG8gJGRpbWVuc2lvbnMgfCBjdXQgLWR4IC1mMikKICAgICAgICAgICAgCiAgICAgICAgICAgICMgQ2FsY3VsYXRlIHRhcmdldCBkaW1lbnNpb25zCiAgICAgICAgICAgIHRhcmdldF9oZWlnaHQ9JCgod2lkdGggKiBBU1BFQ1RfSCAvIEFTUEVDVF9XKSkKICAgICAgICAgICAgCiAgICAgICAgICAgIGlmIFsgJHRhcmdldF9oZWlnaHQgLWxlICRoZWlnaHQgXTsgdGhlbgogICAgICAgICAgICAgICAgb2Zmc2V0X3k9JCgoKGhlaWdodCAtIHRhcmdldF9oZWlnaHQpIC8gMikpCiAgICAgICAgICAgICAgICBvZmZzZXRfeD0wCiAgICAgICAgICAgICAgICBjcm9wX2dlb21ldHJ5PSIke3dpZHRofXgke3RhcmdldF9oZWlnaHR9KyR7b2Zmc2V0X3h9KyR7b2Zmc2V0X3l9IgogICAgICAgICAgICBlbHNlCiAgICAgICAgICAgICAgICB0YXJnZXRfd2lkdGg9JCgoaGVpZ2h0ICogQVNQRUNUX1cgLyBBU1BFQ1RfSCkpCiAgICAgICAgICAgICAgICBvZmZzZXRfeD0kKCgod2lkdGggLSB0YXJnZXRfd2lkdGgpIC8gMikpCiAgICAgICAgICAgICAgICBvZmZzZXRfeT0wCiAgICAgICAgICAgICAgICBjcm9wX2dlb21ldHJ5PSIke3RhcmdldF93aWR0aH14JHtoZWlnaHR9KyR7b2Zmc2V0X3h9KyR7b2Zmc2V0X3l9IgogICAgICAgICAgICBmaQogICAgICAgICAgICAKICAgICAgICAgICAgIyBDcm9wIGFuZCByZXNpemUKICAgICAgICAgICAgY29udmVydCAiJGltZyIgLWNyb3AgIiRjcm9wX2dlb21ldHJ5IiAtcmVzaXplICIke01BWF9XSURUSH14IiAtcXVhbGl0eSAkUVVBTElUWSAiJG91dHB1dCIgMj4vZGV2L251bGwKICAgICAgICAgICAgCiAgICAgICAgICAgIGlmIFsgJD8gLWVxIDAgXTsgdGhlbgogICAgICAgICAgICAgICAgZWNobyAi4pyTIFByb2Nlc3NlZDogJGZpbGVuYW1lIgogICAgICAgICAgICAgICAgKChjb3VudCsrKSkKICAgICAgICAgICAgZWxzZQogICAgICAgICAgICAgICAgZWNobyAi4pyXIEZhaWxlZDogJGZpbGVuYW1lIgogICAgICAgICAgICBmaQogICAgICAgIGZpCiAgICBkb25lCmRvbmUKCgppZiBbICRjb3VudCAtZXEgMCBdOyB0aGVuCiAgICBlY2hvICLimqAgTm8gaW1hZ2VzIGZvdW5kIGluICRJTlBVVF9ESVIiCiAgICBlY2hvICIgIEFkZCBpbWFnZXMgdG86ICRJTlBVVF9ESVIiCmVsc2UKICAgIGVjaG8gIkRvbmUhIFByb2Nlc3NlZCAkY291bnQgaW1hZ2VzIHRvICRPVVRQVVRfRElSIgpmaQo=" 755
+    
+    # File: .config/fastfetch/rotate-images.sh
+    write_file "$HOME/.config/fastfetch/rotate-images.sh" "IyEvYmluL2Jhc2gKQ09ORklHX0RJUj0iL2hvbWUvYWJkdWxyYWhtYW4vLmNvbmZpZy9mYXN0ZmV0Y2giCklNQUdFU19ESVI9IiRDT05GSUdfRElSL2Nyb3BwZWQiClNUQVRFX0ZJTEU9IiRDT05GSUdfRElSL2ltYWdlLWluZGV4LnR4dCIKVEFSR0VUX0ZJTEU9IiRDT05GSUdfRElSL2N1cnJlbnQtaW1hZ2UuanBnIgoKIyBHZXQgbGlzdCBvZiBpbWFnZXMKaW1hZ2VzPSgpCmZvciBleHQgaW4ganBnIHBuZzsgZG8KICAgIGZvciBpbWcgaW4gIiRJTUFHRVNfRElSIi8qLiRleHQ7IGRvCiAgICAgICAgaWYgWyAtZiAiJGltZyIgXTsgdGhlbgogICAgICAgICAgICBpbWFnZXMrPSgiJGltZyIpCiAgICAgICAgZmkKICAgIGRvbmUKZG9uZQoKaWYgWyAkeyNpbWFnZXNbQF19IC1lcSAwIF07IHRoZW4KICAgIGVjaG8gIk5vIGltYWdlcyBmb3VuZCBpbiAkSU1BR0VTX0RJUiIKICAgIGV4aXQgMQpmaQoKIyBSZWFkIGN1cnJlbnQgaW5kZXggb3Igc3RhcnQgYXQgMAppZiBbIC1mICIkU1RBVEVfRklMRSIgXTsgdGhlbgogICAgY3VycmVudF9pbmRleD0kKGNhdCAiJFNUQVRFX0ZJTEUiKQplbHNlCiAgICBjdXJyZW50X2luZGV4PTAKZmkKCiMgQ2FsY3VsYXRlIG5leHQgaW5kZXgKbmV4dF9pbmRleD0kKCggKGN1cnJlbnRfaW5kZXggKyAxKSAlICR7I2ltYWdlc1tAXX0gKSkKCiMgR2V0IHRoZSBuZXh0IGltYWdlCm5leHRfaW1hZ2U9IiR7aW1hZ2VzWyRuZXh0X2luZGV4XX0iCgojIENvcHkgdG8gdGFyZ2V0IGZpbGUgKG92ZXJ3cml0ZSkKY3AgIiRuZXh0X2ltYWdlIiAiJFRBUkdFVF9GSUxFIgoKIyBTYXZlIHRoZSBuZXcgaW5kZXgKZWNobyAiJG5leHRfaW5kZXgiID4gIiRTVEFURV9GSUxFIgoKIyBPdXRwdXQgdGhlIGZpbGVuYW1lCmVjaG8gIiRUQVJHRVRfRklMRSIK" 755
+    
+    # File: .config/fish/config.fish
+    write_file "$HOME/.config/fish/config.fish" "aWYgc3RhdHVzIGlzLWludGVyYWN0aXZlCiAgICAjIFN0YXJzaGlwIGN1c3RvbSBwcm9tcHQKICAgIHN0YXJzaGlwIGluaXQgZmlzaCB8IHNvdXJjZQoKICAgICMgRGlyZW52ICsgWm94aWRlCiAgICBjb21tYW5kIC12IGRpcmVudiAmPi9kZXYvbnVsbCAmJiBkaXJlbnYgaG9vayBmaXNoIHwgc291cmNlCiAgICBjb21tYW5kIC12IHpveGlkZSAmPi9kZXYvbnVsbCAmJiB6b3hpZGUgaW5pdCBmaXNoIC0tY21kIGNkIHwgc291cmNlCgogICAgIyBCZXR0ZXIgbHMKICAgIGFsaWFzIGxzPSdlemEgLS1pY29ucyAtLWdyb3VwLWRpcmVjdG9yaWVzLWZpcnN0IC0xJwoKICAgICMgQWJicnMKICAgIGFiYnIgbGcgbGF6eWdpdAogICAgYWJiciBnZCAnZ2l0IGRpZmYnCiAgICBhYmJyIGdhICdnaXQgYWRkIC4nCiAgICBhYmJyIGdjICdnaXQgY29tbWl0IC1hbScKICAgIGFiYnIgZ2wgJ2dpdCBsb2cnCiAgICBhYmJyIGdzICdnaXQgc3RhdHVzJwogICAgYWJiciBnc3QgJ2dpdCBzdGFzaCcKICAgIGFiYnIgZ3NwICdnaXQgc3Rhc2ggcG9wJwogICAgYWJiciBncCAnZ2l0IHB1c2gnCiAgICBhYmJyIGdwbCAnZ2l0IHB1bGwnCiAgICBhYmJyIGdzdyAnZ2l0IHN3aXRjaCcKICAgIGFiYnIgZ3NtICdnaXQgc3dpdGNoIG1haW4nCiAgICBhYmJyIGdiICdnaXQgYnJhbmNoJwogICAgYWJiciBnYmQgJ2dpdCBicmFuY2ggLWQnCiAgICBhYmJyIGdjbyAnZ2l0IGNoZWNrb3V0JwogICAgYWJiciBnc2ggJ2dpdCBzaG93JwoKICAgIGFiYnIgbCBscwogICAgYWJiciBsbCAnbHMgLWwnCiAgICBhYmJyIGxhICdscyAtYScKICAgIGFiYnIgbGxhICdscyAtbGEnCgogICAgIyBDdXN0b20gY29sb3VycwogICAgY2F0IH4vLmxvY2FsL3N0YXRlL2NhZWxlc3RpYS9zZXF1ZW5jZXMudHh0IDI+L2Rldi9udWxsCgogICAgIyBGb3IganVtcGluZyBiZXR3ZWVuIHByb21wdHMgaW4gZm9vdCB0ZXJtaW5hbAogICAgZnVuY3Rpb24gbWFya19wcm9tcHRfc3RhcnQgLS1vbi1ldmVudCBmaXNoX3Byb21wdAogICAgICAgIGVjaG8gLWVuICJcZV0xMzM7QVxlXFwiCiAgICBlbmQKCiAgICAjIEN1c3RvbSBmaXNoIGNvbmZpZwogICAgc291cmNlIH4vLmNvbmZpZy9jYWVsZXN0aWEvdXNlci1jb25maWcuZmlzaCAyPi9kZXYvbnVsbAplbmQKCiMgRmFzdGZldGNoIGltYWdlIG1hbmFnZW1lbnQgZnVuY3Rpb25zCnNldCAtZyBDT05GSUdfRElSICIkSE9NRS8uY29uZmlnL2Zhc3RmZXRjaCIKCiMgUm90YXRlIHRvIG5leHQgaW1hZ2Ugd2l0aCBGb290IHJlZnJlc2gKZnVuY3Rpb24gbmV4dC1pbWFnZQogICAgIyBHZXQgdGhlIG5ldyB1bmlxdWUgZmlsZW5hbWUKICAgIHNldCBuZXdfaW1hZ2UgKGJhc2ggIiRDT05GSUdfRElSL3JvdGF0ZS1pbWFnZXMuc2giKQoKICAgIGlmIHRlc3QgLW4gIiRuZXdfaW1hZ2UiCiAgICAgICAgIyBSZW1vdmUgYWxsIG9sZCBjdXJyZW50LWltYWdlIGZpbGVzIGV4Y2VwdCB0aGUgbmV3IG9uZQogICAgICAgIGZvciBvbGQgaW4gJENPTkZJR19ESVIvY3VycmVudC1pbWFnZS0qLmpwZwogICAgICAgICAgICBpZiB0ZXN0ICIkb2xkIiAhPSAiJG5ld19pbWFnZSIKICAgICAgICAgICAgICAgIHJtIC1mICIkb2xkIgogICAgICAgICAgICBlbmQKICAgICAgICBlbmQKCiAgICAgICAgIyBVcGRhdGUgZmFzdGZldGNoIGNvbmZpZwogICAgICAgIHNlZCAtaSAic3xcInNvdXJjZVwiOiBcIi4qXCJ8XCJzb3VyY2VcIjogXCIkbmV3X2ltYWdlXCJ8IiAiJENPTkZJR19ESVIvY29uZmlnLmpzb25jIgoKICAgICAgICAjIENsZWFyIGFuZCBzaG93IGZhc3RmZXRjaAogICAgICAgIGNsZWFyCiAgICAgICAgZmFzdGZldGNoCgogICAgICAgIGVjaG8gIuKckyBOb3cgc2hvd2luZzogIihiYXNlbmFtZSAkbmV3X2ltYWdlKQogICAgZWxzZQogICAgICAgIGVjaG8gIkZhaWxlZCB0byByb3RhdGUgaW1hZ2UiCiAgICBlbmQKZW5kCiMgQWRkIG5ldyBpbWFnZQpmdW5jdGlvbiBhZGQtaW1hZ2UKICAgIGlmIHRlc3QgLXogIiRhcmd2WzFdIgogICAgICAgIGVjaG8gIlVzYWdlOiBhZGQtaW1hZ2UgPGltYWdlLWZpbGU+IFtjdXN0b20tbmFtZV0iCiAgICAgICAgcmV0dXJuIDEKICAgIGVuZAogICAgYmFzaCAiJENPTkZJR19ESVIvYWRkLWltYWdlLnNoIiAkYXJndgplbmQKCiMgTGlzdCBhbGwgYXZhaWxhYmxlIGltYWdlcwpmdW5jdGlvbiBsaXN0LWltYWdlcwogICAgZWNobyAiQXZhaWxhYmxlIGltYWdlczoiCiAgICBzZXQgaW1hZ2VzICRDT05GSUdfRElSL2Nyb3BwZWQvKi57anBnLHBuZ30KICAgIGlmIHRlc3QgLW4gIiRpbWFnZXMiCiAgICAgICAgZm9yIGltZyBpbiAkaW1hZ2VzCiAgICAgICAgICAgIGVjaG8gIiAgIihiYXNlbmFtZSAkaW1nKQogICAgICAgIGVuZAogICAgZWxzZQogICAgICAgIGVjaG8gIiAgTm8gaW1hZ2VzIGZvdW5kIgogICAgZW5kCmVuZAoKIyBQcmV2aWV3IGN1cnJlbnQgaW1hZ2UKZnVuY3Rpb24gY3VycmVudC1pbWFnZQogICAgaWYgdGVzdCAtZiAiJENPTkZJR19ESVIvY3VycmVudC1pbWFnZS5qcGciCiAgICAgICAgZWNobyAiQ3VycmVudCBpbWFnZToiCiAgICAgICAgaWRlbnRpZnkgIiRDT05GSUdfRElSL2N1cnJlbnQtaW1hZ2UuanBnIiAyPi9kZXYvbnVsbCB8fCBlY2hvICIgICIoYmFzZW5hbWUgIiRDT05GSUdfRElSL2N1cnJlbnQtaW1hZ2UuanBnIikKCiAgICAgICAgaWYgY29tbWFuZCAtdiBpbXYgPi9kZXYvbnVsbAogICAgICAgICAgICBpbXYgIiRDT05GSUdfRElSL2N1cnJlbnQtaW1hZ2UuanBnIiAmCiAgICAgICAgZWxzZSBpZiBjb21tYW5kIC12IGRpc3BsYXkgPi9kZXYvbnVsbAogICAgICAgICAgICBkaXNwbGF5ICIkQ09ORklHX0RJUi9jdXJyZW50LWltYWdlLmpwZyIgJgogICAgICAgIGVuZAogICAgZWxzZQogICAgICAgIGVjaG8gIk5vIGN1cnJlbnQgaW1hZ2Ugc2V0IgogICAgZW5kCmVuZAoKIyBSZS1jcm9wIGFsbCBpbWFnZXMKZnVuY3Rpb24gcmVjcm9wLWltYWdlcwogICAgYmFzaCAiJENPTkZJR19ESVIvY3JvcC1pbWFnZS5zaCIKICAgIGVjaG8gIkFsbCBpbWFnZXMgcmVjcm9wcGVkISIKICAgIGVjaG8gMCA+IiRDT05GSUdfRElSL2ltYWdlLWluZGV4LnR4dCIKICAgIGJhc2ggIiRDT05GSUdfRElSL3JvdGF0ZS1pbWFnZXMuc2giCgogICAgaWYgc2V0IC1xIEZPT1RfVkVSU0lPTgogICAgICAgIHByaW50ZiAnXDAzM2MnCiAgICAgICAgZmFzdGZldGNoCiAgICBlbmQKZW5kCgojIFJhbmRvbSBpbWFnZSB3aXRoIEZvb3QgcmVmcmVzaApmdW5jdGlvbiByYW5kb20taW1hZ2UKICAgICMgR2V0IGEgcmFuZG9tIGltYWdlIGZyb20gY3JvcHBlZCBmb2xkZXIKICAgIHNldCBpbWFnZXMgKGZpbmQgJENPTkZJR19ESVIvY3JvcHBlZCAtdHlwZSBmIFwoIC1uYW1lICIqLmpwZyIgLW8gLW5hbWUgIioucG5nIiBcKSAyPi9kZXYvbnVsbCkKCiAgICBpZiB0ZXN0IChjb3VudCAkaW1hZ2VzKSAtZ3QgMAogICAgICAgIHNldCByYW5kb21faW1nICRpbWFnZXNbKHJhbmRvbSAxIChjb3VudCAkaW1hZ2VzKSldCgogICAgICAgICMgQ3JlYXRlIHVuaXF1ZSBmaWxlbmFtZQogICAgICAgIHNldCB0aW1lc3RhbXAgKGRhdGUgKyVzKQogICAgICAgIHNldCBuZXdfaW1hZ2UgIiRDT05GSUdfRElSL2N1cnJlbnQtaW1hZ2UtJHRpbWVzdGFtcC5qcGciCiAgICAgICAgY3AgIiRyYW5kb21faW1nIiAiJG5ld19pbWFnZSIKCiAgICAgICAgIyBSZW1vdmUgYWxsIG9sZCBjdXJyZW50LWltYWdlIGZpbGVzCiAgICAgICAgZm9yIG9sZCBpbiAkQ09ORklHX0RJUi9jdXJyZW50LWltYWdlLSouanBnCiAgICAgICAgICAgIGlmIHRlc3QgIiRvbGQiICE9ICIkbmV3X2ltYWdlIgogICAgICAgICAgICAgICAgcm0gLWYgIiRvbGQiCiAgICAgICAgICAgIGVuZAogICAgICAgIGVuZAoKICAgICAgICAjIFVwZGF0ZSBjb25maWcKICAgICAgICBzZWQgLWkgInN8XCJzb3VyY2VcIjogXCIuKlwifFwic291cmNlXCI6IFwiJG5ld19pbWFnZVwifCIgIiRDT05GSUdfRElSL2NvbmZpZy5qc29uYyIKCiAgICAgICAgIyBDbGVhciBhbmQgc2hvdyBmYXN0ZmV0Y2gKICAgICAgICBjbGVhcgogICAgICAgIGZhc3RmZXRjaAoKICAgICAgICAjZWNobyAi4pyTIFJhbmRvbSBpbWFnZTogIihiYXNlbmFtZSAkcmFuZG9tX2ltZykKICAgIGVsc2UKICAgICAgICBlY2hvICJObyBpbWFnZXMgZm91bmQiCiAgICBlbmQKZW5kCgojIFF1aWNrIHJlZnJlc2ggZnVuY3Rpb24KZnVuY3Rpb24gcmVmcmVzaAogICAgaWYgc2V0IC1xIEZPT1RfVkVSU0lPTgogICAgICAgIHByaW50ZiAnXDAzM2MnCiAgICAgICAgZmFzdGZldGNoCiAgICBlbHNlCiAgICAgICAgY2xlYXIKICAgIGVuZAplbmQKCiMgRmFzdGZldGNoIGltYWdlIG1hbmFnZW1lbnQgZnVuY3Rpb25zCnNldCAtZyBDT05GSUdfRElSICIkSE9NRS8uY29uZmlnL2Zhc3RmZXRjaCIKCiMgUm90YXRlIHRvIG5leHQgaW1hZ2UKZnVuY3Rpb24gbmV4dC1pbWFnZQogICAgc2V0IG5ld19pbWFnZSAoYmFzaCAiJENPTkZJR19ESVIvcm90YXRlLWltYWdlcy5zaCIpCiAgICAKICAgIGlmIHRlc3QgLW4gIiRuZXdfaW1hZ2UiCiAgICAgICAgZm9yIG9sZCBpbiAkQ09ORklHX0RJUi9jdXJyZW50LWltYWdlLSouanBnCiAgICAgICAgICAgIGlmIHRlc3QgIiRvbGQiICE9ICIkbmV3X2ltYWdlIgogICAgICAgICAgICAgICAgcm0gLWYgIiRvbGQiCiAgICAgICAgICAgIGVuZAogICAgICAgIGVuZAogICAgICAgIHNlZCAtaSAic3xcInNvdXJjZVwiOiBcIi4qXCJ8XCJzb3VyY2VcIjogXCIkbmV3X2ltYWdlXCJ8IiAiJENPTkZJR19ESVIvY29uZmlnLmpzb25jIgogICAgICAgIGNsZWFyCiAgICAgICAgZmFzdGZldGNoCiAgICBlbHNlCiAgICAgICAgZWNobyAiRmFpbGVkIHRvIHJvdGF0ZSBpbWFnZSIKICAgIGVuZAplbmQKCiMgUmFuZG9tIGltYWdlCmZ1bmN0aW9uIHJhbmRvbS1pbWFnZQogICAgc2V0IGltYWdlcyAoZmluZCAkQ09ORklHX0RJUi9jcm9wcGVkIC10eXBlIGYgXCggLW5hbWUgIiouanBnIiAtbyAtbmFtZSAiKi5wbmciIFwpIDI+L2Rldi9udWxsKQogICAgCiAgICBpZiB0ZXN0IChjb3VudCAkaW1hZ2VzKSAtZ3QgMAogICAgICAgIHNldCByYW5kb21faW1nICRpbWFnZXNbKHJhbmRvbSAxIChjb3VudCAkaW1hZ2VzKSldCiAgICAgICAgc2V0IHRpbWVzdGFtcCAoZGF0ZSArJXMpCiAgICAgICAgc2V0IG5ld19pbWFnZSAiJENPTkZJR19ESVIvY3VycmVudC1pbWFnZS0kdGltZXN0YW1wLmpwZyIKICAgICAgICBjcCAiJHJhbmRvbV9pbWciICIkbmV3X2ltYWdlIgogICAgICAgIAogICAgICAgIGZvciBvbGQgaW4gJENPTkZJR19ESVIvY3VycmVudC1pbWFnZS0qLmpwZwogICAgICAgICAgICBpZiB0ZXN0ICIkb2xkIiAhPSAiJG5ld19pbWFnZSIKICAgICAgICAgICAgICAgIHJtIC1mICIkb2xkIgogICAgICAgICAgICBlbmQKICAgICAgICBlbmQKICAgICAgICAKICAgICAgICBzZWQgLWkgInN8XCJzb3VyY2VcIjogXCIuKlwifFwic291cmNlXCI6IFwiJG5ld19pbWFnZVwifCIgIiRDT05GSUdfRElSL2NvbmZpZy5qc29uYyIKICAgICAgICBjbGVhcgogICAgICAgIGZhc3RmZXRjaAogICAgZWxzZQogICAgICAgIGVjaG8gIk5vIGltYWdlcyBmb3VuZCIKICAgIGVuZAplbmQKCiMgTGlzdCBhbGwgYXZhaWxhYmxlIGltYWdlcwpmdW5jdGlvbiBsaXN0LWltYWdlcwogICAgZWNobyAiQXZhaWxhYmxlIGltYWdlczoiCiAgICBzZXQgaW1hZ2VzICRDT05GSUdfRElSL2Nyb3BwZWQvKi57anBnLHBuZ30KICAgIGlmIHRlc3QgLW4gIiRpbWFnZXMiCiAgICAgICAgZm9yIGltZyBpbiAkaW1hZ2VzCiAgICAgICAgICAgIGVjaG8gIiAgIihiYXNlbmFtZSAkaW1nKQogICAgICAgIGVuZAogICAgZWxzZQogICAgICAgIGVjaG8gIiAgTm8gaW1hZ2VzIGZvdW5kIgogICAgZW5kCmVuZAoKIyBQcmV2aWV3IGN1cnJlbnQgaW1hZ2UKZnVuY3Rpb24gY3VycmVudC1pbWFnZQogICAgc2V0IGN1cnJlbnQgKGdyZXAgJyJzb3VyY2UiJyAkQ09ORklHX0RJUi9jb25maWcuanNvbmMgfCBzZWQgJ3MvLioic291cmNlIjogIlwoLipcKSIuKi9cMS8nKQogICAgaWYgdGVzdCAtZiAiJGN1cnJlbnQiCiAgICAgICAgZWNobyAiQ3VycmVudCBpbWFnZTogIihiYXNlbmFtZSAkY3VycmVudCkKICAgICAgICBpZGVudGlmeSAiJGN1cnJlbnQiIDI+L2Rldi9udWxsIHwgYXdrICd7cHJpbnQgIkRpbWVuc2lvbnM6IiwgJDMsICJTaXplOiIsICQ3LzEwMjQgIktCIn0nCiAgICBlbHNlCiAgICAgICAgZWNobyAiTm8gY3VycmVudCBpbWFnZSBmb3VuZCIKICAgIGVuZAplbmQKCiMgUmUtY3JvcCBhbGwgaW1hZ2VzCmZ1bmN0aW9uIHJlY3JvcC1pbWFnZXMKICAgIGJhc2ggIiRDT05GSUdfRElSL2Nyb3AtaW1hZ2Uuc2giCiAgICBlY2hvICJBbGwgaW1hZ2VzIHJlY3JvcHBlZCEiCiAgICBlY2hvIDAgPiAiJENPTkZJR19ESVIvaW1hZ2UtaW5kZXgudHh0IgogICAgYmFzaCAiJENPTkZJR19ESVIvcm90YXRlLWltYWdlcy5zaCIKICAgIGNsZWFyCiAgICBmYXN0ZmV0Y2gKZW5kCgojIEFkZCBuZXcgaW1hZ2UKZnVuY3Rpb24gYWRkLWltYWdlCiAgICBpZiB0ZXN0IC16ICIkYXJndlsxXSIKICAgICAgICBlY2hvICJVc2FnZTogYWRkLWltYWdlIDxpbWFnZS1maWxlPiBbY3VzdG9tLW5hbWVdIgogICAgICAgIHJldHVybiAxCiAgICBlbmQKICAgIGlmIHRlc3QgLW4gIiRhcmd2WzJdIgogICAgICAgIGNwICIkYXJndlsxXSIgIiRDT05GSUdfRElSL2ltYWdlcy8kYXJndlsyXSIKICAgICAgICBlY2hvICJBZGRlZDogJGFyZ3ZbMl0iCiAgICBlbHNlCiAgICAgICAgY3AgIiRhcmd2WzFdIiAiJENPTkZJR19ESVIvaW1hZ2VzLyIKICAgICAgICBlY2hvICJBZGRlZDogIihiYXNlbmFtZSAiJGFyZ3ZbMV0iKQogICAgZW5kCiAgICByZWNyb3AtaW1hZ2VzCmVuZAoKIyBRdWljayByZWZyZXNoCmZ1bmN0aW9uIHJlZnJlc2gKICAgIGNsZWFyCiAgICBmYXN0ZmV0Y2gKZW5kCgojIEZhc3RmZXRjaCBpbWFnZSBtYW5hZ2VtZW50IGZ1bmN0aW9ucwpzZXQgLWcgQ09ORklHX0RJUiAiJEhPTUUvLmNvbmZpZy9mYXN0ZmV0Y2giCgojIFJvdGF0ZSB0byBuZXh0IGltYWdlCmZ1bmN0aW9uIG5leHQtaW1hZ2UKICAgIHNldCBuZXdfaW1hZ2UgKGJhc2ggIiRDT05GSUdfRElSL3JvdGF0ZS1pbWFnZXMuc2giKQogICAgCiAgICBpZiB0ZXN0IC1uICIkbmV3X2ltYWdlIgogICAgICAgIGZvciBvbGQgaW4gJENPTkZJR19ESVIvY3VycmVudC1pbWFnZS0qLmpwZwogICAgICAgICAgICBpZiB0ZXN0ICIkb2xkIiAhPSAiJG5ld19pbWFnZSIKICAgICAgICAgICAgICAgIHJtIC1mICIkb2xkIgogICAgICAgICAgICBlbmQKICAgICAgICBlbmQKICAgICAgICBzZWQgLWkgInN8XCJzb3VyY2VcIjogXCIuKlwifFwic291cmNlXCI6IFwiJG5ld19pbWFnZVwifCIgIiRDT05GSUdfRElSL2NvbmZpZy5qc29uYyIKICAgICAgICBjbGVhcgogICAgICAgIGZhc3RmZXRjaAogICAgZWxzZQogICAgICAgIGVjaG8gIkZhaWxlZCB0byByb3RhdGUgaW1hZ2UiCiAgICBlbmQKZW5kCgojIFJhbmRvbSBpbWFnZQpmdW5jdGlvbiByYW5kb20taW1hZ2UKICAgIHNldCBpbWFnZXMgKGZpbmQgJENPTkZJR19ESVIvY3JvcHBlZCAtdHlwZSBmIFwoIC1uYW1lICIqLmpwZyIgLW8gLW5hbWUgIioucG5nIiBcKSAyPi9kZXYvbnVsbCkKICAgIAogICAgaWYgdGVzdCAoY291bnQgJGltYWdlcykgLWd0IDAKICAgICAgICBzZXQgcmFuZG9tX2ltZyAkaW1hZ2VzWyhyYW5kb20gMSAoY291bnQgJGltYWdlcykpXQogICAgICAgIHNldCB0aW1lc3RhbXAgKGRhdGUgKyVzKQogICAgICAgIHNldCBuZXdfaW1hZ2UgIiRDT05GSUdfRElSL2N1cnJlbnQtaW1hZ2UtJHRpbWVzdGFtcC5qcGciCiAgICAgICAgY3AgIiRyYW5kb21faW1nIiAiJG5ld19pbWFnZSIKICAgICAgICAKICAgICAgICBmb3Igb2xkIGluICRDT05GSUdfRElSL2N1cnJlbnQtaW1hZ2UtKi5qcGcKICAgICAgICAgICAgaWYgdGVzdCAiJG9sZCIgIT0gIiRuZXdfaW1hZ2UiCiAgICAgICAgICAgICAgICBybSAtZiAiJG9sZCIKICAgICAgICAgICAgZW5kCiAgICAgICAgZW5kCiAgICAgICAgCiAgICAgICAgc2VkIC1pICJzfFwic291cmNlXCI6IFwiLipcInxcInNvdXJjZVwiOiBcIiRuZXdfaW1hZ2VcInwiICIkQ09ORklHX0RJUi9jb25maWcuanNvbmMiCiAgICAgICAgY2xlYXIKICAgICAgICBmYXN0ZmV0Y2gKICAgIGVsc2UKICAgICAgICBlY2hvICJObyBpbWFnZXMgZm91bmQiCiAgICBlbmQKZW5kCgojIExpc3QgYWxsIGF2YWlsYWJsZSBpbWFnZXMKZnVuY3Rpb24gbGlzdC1pbWFnZXMKICAgIGVjaG8gIkF2YWlsYWJsZSBpbWFnZXM6IgogICAgc2V0IGltYWdlcyAkQ09ORklHX0RJUi9jcm9wcGVkLyoue2pwZyxwbmd9CiAgICBpZiB0ZXN0IC1uICIkaW1hZ2VzIgogICAgICAgIGZvciBpbWcgaW4gJGltYWdlcwogICAgICAgICAgICBlY2hvICIgICIoYmFzZW5hbWUgJGltZykKICAgICAgICBlbmQKICAgIGVsc2UKICAgICAgICBlY2hvICIgIE5vIGltYWdlcyBmb3VuZCIKICAgIGVuZAplbmQKCiMgUHJldmlldyBjdXJyZW50IGltYWdlCmZ1bmN0aW9uIGN1cnJlbnQtaW1hZ2UKICAgIHNldCBjdXJyZW50IChncmVwICcic291cmNlIicgJENPTkZJR19ESVIvY29uZmlnLmpzb25jIHwgc2VkICdzLy4qInNvdXJjZSI6ICJcKC4qXCkiLiovXDEvJykKICAgIGlmIHRlc3QgLWYgIiRjdXJyZW50IgogICAgICAgIGVjaG8gIkN1cnJlbnQgaW1hZ2U6ICIoYmFzZW5hbWUgJGN1cnJlbnQpCiAgICAgICAgaWRlbnRpZnkgIiRjdXJyZW50IiAyPi9kZXYvbnVsbCB8IGF3ayAne3ByaW50ICJEaW1lbnNpb25zOiIsICQzLCAiU2l6ZToiLCAkNy8xMDI0ICJLQiJ9JwogICAgZWxzZQogICAgICAgIGVjaG8gIk5vIGN1cnJlbnQgaW1hZ2UgZm91bmQiCiAgICBlbmQKZW5kCgojIFJlLWNyb3AgYWxsIGltYWdlcwpmdW5jdGlvbiByZWNyb3AtaW1hZ2VzCiAgICBiYXNoICIkQ09ORklHX0RJUi9jcm9wLWltYWdlLnNoIgogICAgZWNobyAiQWxsIGltYWdlcyByZWNyb3BwZWQhIgogICAgZWNobyAwID4gIiRDT05GSUdfRElSL2ltYWdlLWluZGV4LnR4dCIKICAgIGJhc2ggIiRDT05GSUdfRElSL3JvdGF0ZS1pbWFnZXMuc2giCiAgICBjbGVhcgogICAgZmFzdGZldGNoCmVuZAoKIyBBZGQgbmV3IGltYWdlCmZ1bmN0aW9uIGFkZC1pbWFnZQogICAgaWYgdGVzdCAteiAiJGFyZ3ZbMV0iCiAgICAgICAgZWNobyAiVXNhZ2U6IGFkZC1pbWFnZSA8aW1hZ2UtZmlsZT4gW2N1c3RvbS1uYW1lXSIKICAgICAgICByZXR1cm4gMQogICAgZW5kCiAgICBpZiB0ZXN0IC1uICIkYXJndlsyXSIKICAgICAgICBjcCAiJGFyZ3ZbMV0iICIkQ09ORklHX0RJUi9pbWFnZXMvJGFyZ3ZbMl0iCiAgICAgICAgZWNobyAiQWRkZWQ6ICRhcmd2WzJdIgogICAgZWxzZQogICAgICAgIGNwICIkYXJndlsxXSIgIiRDT05GSUdfRElSL2ltYWdlcy8iCiAgICAgICAgZWNobyAiQWRkZWQ6ICIoYmFzZW5hbWUgIiRhcmd2WzFdIikKICAgIGVuZAogICAgcmVjcm9wLWltYWdlcwplbmQKCiMgUXVpY2sgcmVmcmVzaApmdW5jdGlvbiByZWZyZXNoCiAgICBjbGVhcgogICAgZmFzdGZldGNoCmVuZAoKIyBGYXN0ZmV0Y2ggaW1hZ2UgbWFuYWdlbWVudCBmdW5jdGlvbnMKc2V0IC1nIENPTkZJR19ESVIgIiRIT01FLy5jb25maWcvZmFzdGZldGNoIgoKIyBSb3RhdGUgdG8gbmV4dCBpbWFnZQpmdW5jdGlvbiBuZXh0LWltYWdlCiAgICBzZXQgbmV3X2ltYWdlIChiYXNoICIkQ09ORklHX0RJUi9yb3RhdGUtaW1hZ2VzLnNoIikKICAgIAogICAgaWYgdGVzdCAtbiAiJG5ld19pbWFnZSIKICAgICAgICBmb3Igb2xkIGluICRDT05GSUdfRElSL2N1cnJlbnQtaW1hZ2UtKi5qcGcKICAgICAgICAgICAgaWYgdGVzdCAiJG9sZCIgIT0gIiRuZXdfaW1hZ2UiCiAgICAgICAgICAgICAgICBybSAtZiAiJG9sZCIKICAgICAgICAgICAgZW5kCiAgICAgICAgZW5kCiAgICAgICAgc2VkIC1pICJzfFwic291cmNlXCI6IFwiLipcInxcInNvdXJjZVwiOiBcIiRuZXdfaW1hZ2VcInwiICIkQ09ORklHX0RJUi9jb25maWcuanNvbmMiCiAgICAgICAgY2xlYXIKICAgICAgICBmYXN0ZmV0Y2gKICAgIGVsc2UKICAgICAgICBlY2hvICJGYWlsZWQgdG8gcm90YXRlIGltYWdlIgogICAgZW5kCmVuZAoKIyBSYW5kb20gaW1hZ2UKZnVuY3Rpb24gcmFuZG9tLWltYWdlCiAgICBzZXQgaW1hZ2VzIChmaW5kICRDT05GSUdfRElSL2Nyb3BwZWQgLXR5cGUgZiBcKCAtbmFtZSAiKi5qcGciIC1vIC1uYW1lICIqLnBuZyIgXCkgMj4vZGV2L251bGwpCiAgICAKICAgIGlmIHRlc3QgKGNvdW50ICRpbWFnZXMpIC1ndCAwCiAgICAgICAgc2V0IHJhbmRvbV9pbWcgJGltYWdlc1socmFuZG9tIDEgKGNvdW50ICRpbWFnZXMpKV0KICAgICAgICBzZXQgdGltZXN0YW1wIChkYXRlICslcykKICAgICAgICBzZXQgbmV3X2ltYWdlICIkQ09ORklHX0RJUi9jdXJyZW50LWltYWdlLSR0aW1lc3RhbXAuanBnIgogICAgICAgIGNwICIkcmFuZG9tX2ltZyIgIiRuZXdfaW1hZ2UiCiAgICAgICAgCiAgICAgICAgZm9yIG9sZCBpbiAkQ09ORklHX0RJUi9jdXJyZW50LWltYWdlLSouanBnCiAgICAgICAgICAgIGlmIHRlc3QgIiRvbGQiICE9ICIkbmV3X2ltYWdlIgogICAgICAgICAgICAgICAgcm0gLWYgIiRvbGQiCiAgICAgICAgICAgIGVuZAogICAgICAgIGVuZAogICAgICAgIAogICAgICAgIHNlZCAtaSAic3xcInNvdXJjZVwiOiBcIi4qXCJ8XCJzb3VyY2VcIjogXCIkbmV3X2ltYWdlXCJ8IiAiJENPTkZJR19ESVIvY29uZmlnLmpzb25jIgogICAgICAgIGNsZWFyCiAgICAgICAgZmFzdGZldGNoCiAgICBlbHNlCiAgICAgICAgZWNobyAiTm8gaW1hZ2VzIGZvdW5kIgogICAgZW5kCmVuZAoKIyBMaXN0IGFsbCBhdmFpbGFibGUgaW1hZ2VzCmZ1bmN0aW9uIGxpc3QtaW1hZ2VzCiAgICBlY2hvICJBdmFpbGFibGUgaW1hZ2VzOiIKICAgIHNldCBpbWFnZXMgJENPTkZJR19ESVIvY3JvcHBlZC8qLntqcGcscG5nfQogICAgaWYgdGVzdCAtbiAiJGltYWdlcyIKICAgICAgICBmb3IgaW1nIGluICRpbWFnZXMKICAgICAgICAgICAgZWNobyAiICAiKGJhc2VuYW1lICRpbWcpCiAgICAgICAgZW5kCiAgICBlbHNlCiAgICAgICAgZWNobyAiICBObyBpbWFnZXMgZm91bmQiCiAgICBlbmQKZW5kCgojIFByZXZpZXcgY3VycmVudCBpbWFnZQpmdW5jdGlvbiBjdXJyZW50LWltYWdlCiAgICBzZXQgY3VycmVudCAoZ3JlcCAnInNvdXJjZSInICRDT05GSUdfRElSL2NvbmZpZy5qc29uYyB8IHNlZCAncy8uKiJzb3VyY2UiOiAiXCguKlwpIi4qL1wxLycpCiAgICBpZiB0ZXN0IC1mICIkY3VycmVudCIKICAgICAgICBlY2hvICJDdXJyZW50IGltYWdlOiAiKGJhc2VuYW1lICRjdXJyZW50KQogICAgICAgIGlkZW50aWZ5ICIkY3VycmVudCIgMj4vZGV2L251bGwgfCBhd2sgJ3twcmludCAiRGltZW5zaW9uczoiLCAkMywgIlNpemU6IiwgJDcvMTAyNCAiS0IifScKICAgIGVsc2UKICAgICAgICBlY2hvICJObyBjdXJyZW50IGltYWdlIGZvdW5kIgogICAgZW5kCmVuZAoKIyBSZS1jcm9wIGFsbCBpbWFnZXMKZnVuY3Rpb24gcmVjcm9wLWltYWdlcwogICAgYmFzaCAiJENPTkZJR19ESVIvY3JvcC1pbWFnZS5zaCIKICAgIGVjaG8gIkFsbCBpbWFnZXMgcmVjcm9wcGVkISIKICAgIGVjaG8gMCA+ICIkQ09ORklHX0RJUi9pbWFnZS1pbmRleC50eHQiCiAgICBiYXNoICIkQ09ORklHX0RJUi9yb3RhdGUtaW1hZ2VzLnNoIgogICAgY2xlYXIKICAgIGZhc3RmZXRjaAplbmQKCiMgQWRkIG5ldyBpbWFnZQpmdW5jdGlvbiBhZGQtaW1hZ2UKICAgIGlmIHRlc3QgLXogIiRhcmd2WzFdIgogICAgICAgIGVjaG8gIlVzYWdlOiBhZGQtaW1hZ2UgPGltYWdlLWZpbGU+IFtjdXN0b20tbmFtZV0iCiAgICAgICAgcmV0dXJuIDEKICAgIGVuZAogICAgaWYgdGVzdCAtbiAiJGFyZ3ZbMl0iCiAgICAgICAgY3AgIiRhcmd2WzFdIiAiJENPTkZJR19ESVIvaW1hZ2VzLyRhcmd2WzJdIgogICAgICAgIGVjaG8gIkFkZGVkOiAkYXJndlsyXSIKICAgIGVsc2UKICAgICAgICBjcCAiJGFyZ3ZbMV0iICIkQ09ORklHX0RJUi9pbWFnZXMvIgogICAgICAgIGVjaG8gIkFkZGVkOiAiKGJhc2VuYW1lICIkYXJndlsxXSIpCiAgICBlbmQKICAgIHJlY3JvcC1pbWFnZXMKZW5kCgojIFF1aWNrIHJlZnJlc2gKZnVuY3Rpb24gcmVmcmVzaAogICAgY2xlYXIKICAgIGZhc3RmZXRjaAplbmQKCiMgRmFzdGZldGNoIGltYWdlIG1hbmFnZW1lbnQgZnVuY3Rpb25zCnNldCAtZyBDT05GSUdfRElSICIkSE9NRS8uY29uZmlnL2Zhc3RmZXRjaCIKCiMgUm90YXRlIHRvIG5leHQgaW1hZ2UKZnVuY3Rpb24gbmV4dC1pbWFnZQogICAgc2V0IG5ld19pbWFnZSAoYmFzaCAiJENPTkZJR19ESVIvcm90YXRlLWltYWdlcy5zaCIpCiAgICAKICAgIGlmIHRlc3QgLW4gIiRuZXdfaW1hZ2UiCiAgICAgICAgZm9yIG9sZCBpbiAkQ09ORklHX0RJUi9jdXJyZW50LWltYWdlLSouanBnCiAgICAgICAgICAgIGlmIHRlc3QgIiRvbGQiICE9ICIkbmV3X2ltYWdlIgogICAgICAgICAgICAgICAgcm0gLWYgIiRvbGQiCiAgICAgICAgICAgIGVuZAogICAgICAgIGVuZAogICAgICAgIHNlZCAtaSAic3xcInNvdXJjZVwiOiBcIi4qXCJ8XCJzb3VyY2VcIjogXCIkbmV3X2ltYWdlXCJ8IiAiJENPTkZJR19ESVIvY29uZmlnLmpzb25jIgogICAgICAgIGNsZWFyCiAgICAgICAgZmFzdGZldGNoCiAgICBlbHNlCiAgICAgICAgZWNobyAiRmFpbGVkIHRvIHJvdGF0ZSBpbWFnZSIKICAgIGVuZAplbmQKCiMgUmFuZG9tIGltYWdlCmZ1bmN0aW9uIHJhbmRvbS1pbWFnZQogICAgc2V0IGltYWdlcyAoZmluZCAkQ09ORklHX0RJUi9jcm9wcGVkIC10eXBlIGYgXCggLW5hbWUgIiouanBnIiAtbyAtbmFtZSAiKi5wbmciIFwpIDI+L2Rldi9udWxsKQogICAgCiAgICBpZiB0ZXN0IChjb3VudCAkaW1hZ2VzKSAtZ3QgMAogICAgICAgIHNldCByYW5kb21faW1nICRpbWFnZXNbKHJhbmRvbSAxIChjb3VudCAkaW1hZ2VzKSldCiAgICAgICAgc2V0IHRpbWVzdGFtcCAoZGF0ZSArJXMpCiAgICAgICAgc2V0IG5ld19pbWFnZSAiJENPTkZJR19ESVIvY3VycmVudC1pbWFnZS0kdGltZXN0YW1wLmpwZyIKICAgICAgICBjcCAiJHJhbmRvbV9pbWciICIkbmV3X2ltYWdlIgogICAgICAgIAogICAgICAgIGZvciBvbGQgaW4gJENPTkZJR19ESVIvY3VycmVudC1pbWFnZS0qLmpwZwogICAgICAgICAgICBpZiB0ZXN0ICIkb2xkIiAhPSAiJG5ld19pbWFnZSIKICAgICAgICAgICAgICAgIHJtIC1mICIkb2xkIgogICAgICAgICAgICBlbmQKICAgICAgICBlbmQKICAgICAgICAKICAgICAgICBzZWQgLWkgInN8XCJzb3VyY2VcIjogXCIuKlwifFwic291cmNlXCI6IFwiJG5ld19pbWFnZVwifCIgIiRDT05GSUdfRElSL2NvbmZpZy5qc29uYyIKICAgICAgICBjbGVhcgogICAgICAgIGZhc3RmZXRjaAogICAgZWxzZQogICAgICAgIGVjaG8gIk5vIGltYWdlcyBmb3VuZCIKICAgIGVuZAplbmQKCiMgTGlzdCBhbGwgYXZhaWxhYmxlIGltYWdlcwpmdW5jdGlvbiBsaXN0LWltYWdlcwogICAgZWNobyAiQXZhaWxhYmxlIGltYWdlczoiCiAgICBzZXQgaW1hZ2VzICRDT05GSUdfRElSL2Nyb3BwZWQvKi57anBnLHBuZ30KICAgIGlmIHRlc3QgLW4gIiRpbWFnZXMiCiAgICAgICAgZm9yIGltZyBpbiAkaW1hZ2VzCiAgICAgICAgICAgIGVjaG8gIiAgIihiYXNlbmFtZSAkaW1nKQogICAgICAgIGVuZAogICAgZWxzZQogICAgICAgIGVjaG8gIiAgTm8gaW1hZ2VzIGZvdW5kIgogICAgZW5kCmVuZAoKIyBQcmV2aWV3IGN1cnJlbnQgaW1hZ2UKZnVuY3Rpb24gY3VycmVudC1pbWFnZQogICAgc2V0IGN1cnJlbnQgKGdyZXAgJyJzb3VyY2UiJyAkQ09ORklHX0RJUi9jb25maWcuanNvbmMgfCBzZWQgJ3MvLioic291cmNlIjogIlwoLipcKSIuKi9cMS8nKQogICAgaWYgdGVzdCAtZiAiJGN1cnJlbnQiCiAgICAgICAgZWNobyAiQ3VycmVudCBpbWFnZTogIihiYXNlbmFtZSAkY3VycmVudCkKICAgICAgICBpZGVudGlmeSAiJGN1cnJlbnQiIDI+L2Rldi9udWxsIHwgYXdrICd7cHJpbnQgIkRpbWVuc2lvbnM6IiwgJDMsICJTaXplOiIsICQ3LzEwMjQgIktCIn0nCiAgICBlbHNlCiAgICAgICAgZWNobyAiTm8gY3VycmVudCBpbWFnZSBmb3VuZCIKICAgIGVuZAplbmQKCiMgUmUtY3JvcCBhbGwgaW1hZ2VzCmZ1bmN0aW9uIHJlY3JvcC1pbWFnZXMKICAgIGJhc2ggIiRDT05GSUdfRElSL2Nyb3AtaW1hZ2Uuc2giCiAgICBlY2hvICJBbGwgaW1hZ2VzIHJlY3JvcHBlZCEiCiAgICBlY2hvIDAgPiAiJENPTkZJR19ESVIvaW1hZ2UtaW5kZXgudHh0IgogICAgYmFzaCAiJENPTkZJR19ESVIvcm90YXRlLWltYWdlcy5zaCIKICAgIGNsZWFyCiAgICBmYXN0ZmV0Y2gKZW5kCgojIEFkZCBuZXcgaW1hZ2UKZnVuY3Rpb24gYWRkLWltYWdlCiAgICBpZiB0ZXN0IC16ICIkYXJndlsxXSIKICAgICAgICBlY2hvICJVc2FnZTogYWRkLWltYWdlIDxpbWFnZS1maWxlPiBbY3VzdG9tLW5hbWVdIgogICAgICAgIHJldHVybiAxCiAgICBlbmQKICAgIGlmIHRlc3QgLW4gIiRhcmd2WzJdIgogICAgICAgIGNwICIkYXJndlsxXSIgIiRDT05GSUdfRElSL2ltYWdlcy8kYXJndlsyXSIKICAgICAgICBlY2hvICJBZGRlZDogJGFyZ3ZbMl0iCiAgICBlbHNlCiAgICAgICAgY3AgIiRhcmd2WzFdIiAiJENPTkZJR19ESVIvaW1hZ2VzLyIKICAgICAgICBlY2hvICJBZGRlZDogIihiYXNlbmFtZSAiJGFyZ3ZbMV0iKQogICAgZW5kCiAgICByZWNyb3AtaW1hZ2VzCmVuZAoKIyBRdWljayByZWZyZXNoCmZ1bmN0aW9uIHJlZnJlc2gKICAgIGNsZWFyCiAgICBmYXN0ZmV0Y2gKZW5kCgojIEZhc3RmZXRjaCBpbWFnZSBtYW5hZ2VtZW50IGZ1bmN0aW9ucwpzZXQgLWcgQ09ORklHX0RJUiAiJEhPTUUvLmNvbmZpZy9mYXN0ZmV0Y2giCgojIFJvdGF0ZSB0byBuZXh0IGltYWdlCmZ1bmN0aW9uIG5leHQtaW1hZ2UKICAgIHNldCBuZXdfaW1hZ2UgKGJhc2ggIiRDT05GSUdfRElSL3JvdGF0ZS1pbWFnZXMuc2giKQogICAgCiAgICBpZiB0ZXN0IC1uICIkbmV3X2ltYWdlIgogICAgICAgIGZvciBvbGQgaW4gJENPTkZJR19ESVIvY3VycmVudC1pbWFnZS0qLmpwZwogICAgICAgICAgICBpZiB0ZXN0ICIkb2xkIiAhPSAiJG5ld19pbWFnZSIKICAgICAgICAgICAgICAgIHJtIC1mICIkb2xkIgogICAgICAgICAgICBlbmQKICAgICAgICBlbmQKICAgICAgICBzZWQgLWkgInN8XCJzb3VyY2VcIjogXCIuKlwifFwic291cmNlXCI6IFwiJG5ld19pbWFnZVwifCIgIiRDT05GSUdfRElSL2NvbmZpZy5qc29uYyIKICAgICAgICBjbGVhcgogICAgICAgIGZhc3RmZXRjaAogICAgZWxzZQogICAgICAgIGVjaG8gIkZhaWxlZCB0byByb3RhdGUgaW1hZ2UiCiAgICBlbmQKZW5kCgojIFJhbmRvbSBpbWFnZQpmdW5jdGlvbiByYW5kb20taW1hZ2UKICAgIHNldCBpbWFnZXMgKGZpbmQgJENPTkZJR19ESVIvY3JvcHBlZCAtdHlwZSBmIFwoIC1uYW1lICIqLmpwZyIgLW8gLW5hbWUgIioucG5nIiBcKSAyPi9kZXYvbnVsbCkKICAgIAogICAgaWYgdGVzdCAoY291bnQgJGltYWdlcykgLWd0IDAKICAgICAgICBzZXQgcmFuZG9tX2ltZyAkaW1hZ2VzWyhyYW5kb20gMSAoY291bnQgJGltYWdlcykpXQogICAgICAgIHNldCB0aW1lc3RhbXAgKGRhdGUgKyVzKQogICAgICAgIHNldCBuZXdfaW1hZ2UgIiRDT05GSUdfRElSL2N1cnJlbnQtaW1hZ2UtJHRpbWVzdGFtcC5qcGciCiAgICAgICAgY3AgIiRyYW5kb21faW1nIiAiJG5ld19pbWFnZSIKICAgICAgICAKICAgICAgICBmb3Igb2xkIGluICRDT05GSUdfRElSL2N1cnJlbnQtaW1hZ2UtKi5qcGcKICAgICAgICAgICAgaWYgdGVzdCAiJG9sZCIgIT0gIiRuZXdfaW1hZ2UiCiAgICAgICAgICAgICAgICBybSAtZiAiJG9sZCIKICAgICAgICAgICAgZW5kCiAgICAgICAgZW5kCiAgICAgICAgCiAgICAgICAgc2VkIC1pICJzfFwic291cmNlXCI6IFwiLipcInxcInNvdXJjZVwiOiBcIiRuZXdfaW1hZ2VcInwiICIkQ09ORklHX0RJUi9jb25maWcuanNvbmMiCiAgICAgICAgY2xlYXIKICAgICAgICBmYXN0ZmV0Y2gKICAgIGVsc2UKICAgICAgICBlY2hvICJObyBpbWFnZXMgZm91bmQiCiAgICBlbmQKZW5kCgojIExpc3QgYWxsIGF2YWlsYWJsZSBpbWFnZXMKZnVuY3Rpb24gbGlzdC1pbWFnZXMKICAgIGVjaG8gIkF2YWlsYWJsZSBpbWFnZXM6IgogICAgc2V0IGltYWdlcyAkQ09ORklHX0RJUi9jcm9wcGVkLyoue2pwZyxwbmd9CiAgICBpZiB0ZXN0IC1uICIkaW1hZ2VzIgogICAgICAgIGZvciBpbWcgaW4gJGltYWdlcwogICAgICAgICAgICBlY2hvICIgICIoYmFzZW5hbWUgJGltZykKICAgICAgICBlbmQKICAgIGVsc2UKICAgICAgICBlY2hvICIgIE5vIGltYWdlcyBmb3VuZCIKICAgIGVuZAplbmQKCiMgUHJldmlldyBjdXJyZW50IGltYWdlCmZ1bmN0aW9uIGN1cnJlbnQtaW1hZ2UKICAgIHNldCBjdXJyZW50IChncmVwICcic291cmNlIicgJENPTkZJR19ESVIvY29uZmlnLmpzb25jIHwgc2VkICdzLy4qInNvdXJjZSI6ICJcKC4qXCkiLiovXDEvJykKICAgIGlmIHRlc3QgLWYgIiRjdXJyZW50IgogICAgICAgIGVjaG8gIkN1cnJlbnQgaW1hZ2U6ICIoYmFzZW5hbWUgJGN1cnJlbnQpCiAgICAgICAgaWRlbnRpZnkgIiRjdXJyZW50IiAyPi9kZXYvbnVsbCB8IGF3ayAne3ByaW50ICJEaW1lbnNpb25zOiIsICQzLCAiU2l6ZToiLCAkNy8xMDI0ICJLQiJ9JwogICAgZWxzZQogICAgICAgIGVjaG8gIk5vIGN1cnJlbnQgaW1hZ2UgZm91bmQiCiAgICBlbmQKZW5kCgojIFJlLWNyb3AgYWxsIGltYWdlcwpmdW5jdGlvbiByZWNyb3AtaW1hZ2VzCiAgICBiYXNoICIkQ09ORklHX0RJUi9jcm9wLWltYWdlLnNoIgogICAgZWNobyAiQWxsIGltYWdlcyByZWNyb3BwZWQhIgogICAgZWNobyAwID4gIiRDT05GSUdfRElSL2ltYWdlLWluZGV4LnR4dCIKICAgIGJhc2ggIiRDT05GSUdfRElSL3JvdGF0ZS1pbWFnZXMuc2giCiAgICBjbGVhcgogICAgZmFzdGZldGNoCmVuZAoKIyBBZGQgbmV3IGltYWdlCmZ1bmN0aW9uIGFkZC1pbWFnZQogICAgaWYgdGVzdCAteiAiJGFyZ3ZbMV0iCiAgICAgICAgZWNobyAiVXNhZ2U6IGFkZC1pbWFnZSA8aW1hZ2UtZmlsZT4gW2N1c3RvbS1uYW1lXSIKICAgICAgICByZXR1cm4gMQogICAgZW5kCiAgICBpZiB0ZXN0IC1uICIkYXJndlsyXSIKICAgICAgICBjcCAiJGFyZ3ZbMV0iICIkQ09ORklHX0RJUi9pbWFnZXMvJGFyZ3ZbMl0iCiAgICAgICAgZWNobyAiQWRkZWQ6ICRhcmd2WzJdIgogICAgZWxzZQogICAgICAgIGNwICIkYXJndlsxXSIgIiRDT05GSUdfRElSL2ltYWdlcy8iCiAgICAgICAgZWNobyAiQWRkZWQ6ICIoYmFzZW5hbWUgIiRhcmd2WzFdIikKICAgIGVuZAogICAgcmVjcm9wLWltYWdlcwplbmQKCiMgUXVpY2sgcmVmcmVzaApmdW5jdGlvbiByZWZyZXNoCiAgICBjbGVhcgogICAgZmFzdGZldGNoCmVuZAoKIyBGYXN0ZmV0Y2ggaW1hZ2UgbWFuYWdlbWVudCBmdW5jdGlvbnMKc2V0IC1nIENPTkZJR19ESVIgIiRIT01FLy5jb25maWcvZmFzdGZldGNoIgoKIyBSb3RhdGUgdG8gbmV4dCBpbWFnZQpmdW5jdGlvbiBuZXh0LWltYWdlCiAgICBzZXQgbmV3X2ltYWdlIChiYXNoICIkQ09ORklHX0RJUi9yb3RhdGUtaW1hZ2VzLnNoIikKICAgIAogICAgaWYgdGVzdCAtbiAiJG5ld19pbWFnZSIKICAgICAgICBmb3Igb2xkIGluICRDT05GSUdfRElSL2N1cnJlbnQtaW1hZ2UtKi5qcGcKICAgICAgICAgICAgaWYgdGVzdCAiJG9sZCIgIT0gIiRuZXdfaW1hZ2UiCiAgICAgICAgICAgICAgICBybSAtZiAiJG9sZCIKICAgICAgICAgICAgZW5kCiAgICAgICAgZW5kCiAgICAgICAgc2VkIC1pICJzfFwic291cmNlXCI6IFwiLipcInxcInNvdXJjZVwiOiBcIiRuZXdfaW1hZ2VcInwiICIkQ09ORklHX0RJUi9jb25maWcuanNvbmMiCiAgICAgICAgY2xlYXIKICAgICAgICBmYXN0ZmV0Y2gKICAgIGVsc2UKICAgICAgICBlY2hvICJGYWlsZWQgdG8gcm90YXRlIGltYWdlIgogICAgZW5kCmVuZAoKIyBSYW5kb20gaW1hZ2UKZnVuY3Rpb24gcmFuZG9tLWltYWdlCiAgICBzZXQgaW1hZ2VzIChmaW5kICRDT05GSUdfRElSL2Nyb3BwZWQgLXR5cGUgZiBcKCAtbmFtZSAiKi5qcGciIC1vIC1uYW1lICIqLnBuZyIgXCkgMj4vZGV2L251bGwpCiAgICAKICAgIGlmIHRlc3QgKGNvdW50ICRpbWFnZXMpIC1ndCAwCiAgICAgICAgc2V0IHJhbmRvbV9pbWcgJGltYWdlc1socmFuZG9tIDEgKGNvdW50ICRpbWFnZXMpKV0KICAgICAgICBzZXQgdGltZXN0YW1wIChkYXRlICslcykKICAgICAgICBzZXQgbmV3X2ltYWdlICIkQ09ORklHX0RJUi9jdXJyZW50LWltYWdlLSR0aW1lc3RhbXAuanBnIgogICAgICAgIGNwICIkcmFuZG9tX2ltZyIgIiRuZXdfaW1hZ2UiCiAgICAgICAgCiAgICAgICAgZm9yIG9sZCBpbiAkQ09ORklHX0RJUi9jdXJyZW50LWltYWdlLSouanBnCiAgICAgICAgICAgIGlmIHRlc3QgIiRvbGQiICE9ICIkbmV3X2ltYWdlIgogICAgICAgICAgICAgICAgcm0gLWYgIiRvbGQiCiAgICAgICAgICAgIGVuZAogICAgICAgIGVuZAogICAgICAgIAogICAgICAgIHNlZCAtaSAic3xcInNvdXJjZVwiOiBcIi4qXCJ8XCJzb3VyY2VcIjogXCIkbmV3X2ltYWdlXCJ8IiAiJENPTkZJR19ESVIvY29uZmlnLmpzb25jIgogICAgICAgIGNsZWFyCiAgICAgICAgZmFzdGZldGNoCiAgICBlbHNlCiAgICAgICAgZWNobyAiTm8gaW1hZ2VzIGZvdW5kIgogICAgZW5kCmVuZAoKIyBMaXN0IGFsbCBhdmFpbGFibGUgaW1hZ2VzCmZ1bmN0aW9uIGxpc3QtaW1hZ2VzCiAgICBlY2hvICJBdmFpbGFibGUgaW1hZ2VzOiIKICAgIHNldCBpbWFnZXMgJENPTkZJR19ESVIvY3JvcHBlZC8qLntqcGcscG5nfQogICAgaWYgdGVzdCAtbiAiJGltYWdlcyIKICAgICAgICBmb3IgaW1nIGluICRpbWFnZXMKICAgICAgICAgICAgZWNobyAiICAiKGJhc2VuYW1lICRpbWcpCiAgICAgICAgZW5kCiAgICBlbHNlCiAgICAgICAgZWNobyAiICBObyBpbWFnZXMgZm91bmQiCiAgICBlbmQKZW5kCgojIFByZXZpZXcgY3VycmVudCBpbWFnZQpmdW5jdGlvbiBjdXJyZW50LWltYWdlCiAgICBzZXQgY3VycmVudCAoZ3JlcCAnInNvdXJjZSInICRDT05GSUdfRElSL2NvbmZpZy5qc29uYyB8IHNlZCAncy8uKiJzb3VyY2UiOiAiXCguKlwpIi4qL1wxLycpCiAgICBpZiB0ZXN0IC1mICIkY3VycmVudCIKICAgICAgICBlY2hvICJDdXJyZW50IGltYWdlOiAiKGJhc2VuYW1lICRjdXJyZW50KQogICAgICAgIGlkZW50aWZ5ICIkY3VycmVudCIgMj4vZGV2L251bGwgfCBhd2sgJ3twcmludCAiRGltZW5zaW9uczoiLCAkMywgIlNpemU6IiwgJDcvMTAyNCAiS0IifScKICAgIGVsc2UKICAgICAgICBlY2hvICJObyBjdXJyZW50IGltYWdlIGZvdW5kIgogICAgZW5kCmVuZAoKIyBSZS1jcm9wIGFsbCBpbWFnZXMKZnVuY3Rpb24gcmVjcm9wLWltYWdlcwogICAgYmFzaCAiJENPTkZJR19ESVIvY3JvcC1pbWFnZS5zaCIKICAgIGVjaG8gIkFsbCBpbWFnZXMgcmVjcm9wcGVkISIKICAgIGVjaG8gMCA+ICIkQ09ORklHX0RJUi9pbWFnZS1pbmRleC50eHQiCiAgICBiYXNoICIkQ09ORklHX0RJUi9yb3RhdGUtaW1hZ2VzLnNoIgogICAgY2xlYXIKICAgIGZhc3RmZXRjaAplbmQKCiMgQWRkIG5ldyBpbWFnZQpmdW5jdGlvbiBhZGQtaW1hZ2UKICAgIGlmIHRlc3QgLXogIiRhcmd2WzFdIgogICAgICAgIGVjaG8gIlVzYWdlOiBhZGQtaW1hZ2UgPGltYWdlLWZpbGU+IFtjdXN0b20tbmFtZV0iCiAgICAgICAgcmV0dXJuIDEKICAgIGVuZAogICAgaWYgdGVzdCAtbiAiJGFyZ3ZbMl0iCiAgICAgICAgY3AgIiRhcmd2WzFdIiAiJENPTkZJR19ESVIvaW1hZ2VzLyRhcmd2WzJdIgogICAgICAgIGVjaG8gIkFkZGVkOiAkYXJndlsyXSIKICAgIGVsc2UKICAgICAgICBjcCAiJGFyZ3ZbMV0iICIkQ09ORklHX0RJUi9pbWFnZXMvIgogICAgICAgIGVjaG8gIkFkZGVkOiAiKGJhc2VuYW1lICIkYXJndlsxXSIpCiAgICBlbmQKICAgIHJlY3JvcC1pbWFnZXMKZW5kCgojIFF1aWNrIHJlZnJlc2gKZnVuY3Rpb24gcmVmcmVzaAogICAgY2xlYXIKICAgIGZhc3RmZXRjaAplbmQKCiMgRmFzdGZldGNoIGltYWdlIG1hbmFnZW1lbnQgZnVuY3Rpb25zCnNldCAtZyBDT05GSUdfRElSICIkSE9NRS8uY29uZmlnL2Zhc3RmZXRjaCIKCiMgUm90YXRlIHRvIG5leHQgaW1hZ2UKZnVuY3Rpb24gbmV4dC1pbWFnZQogICAgc2V0IG5ld19pbWFnZSAoYmFzaCAiJENPTkZJR19ESVIvcm90YXRlLWltYWdlcy5zaCIpCiAgICAKICAgIGlmIHRlc3QgLW4gIiRuZXdfaW1hZ2UiCiAgICAgICAgZm9yIG9sZCBpbiAkQ09ORklHX0RJUi9jdXJyZW50LWltYWdlLSouanBnCiAgICAgICAgICAgIGlmIHRlc3QgIiRvbGQiICE9ICIkbmV3X2ltYWdlIgogICAgICAgICAgICAgICAgcm0gLWYgIiRvbGQiCiAgICAgICAgICAgIGVuZAogICAgICAgIGVuZAogICAgICAgIHNlZCAtaSAic3xcInNvdXJjZVwiOiBcIi4qXCJ8XCJzb3VyY2VcIjogXCIkbmV3X2ltYWdlXCJ8IiAiJENPTkZJR19ESVIvY29uZmlnLmpzb25jIgogICAgICAgIGNsZWFyCiAgICAgICAgZmFzdGZldGNoCiAgICBlbHNlCiAgICAgICAgZWNobyAiRmFpbGVkIHRvIHJvdGF0ZSBpbWFnZSIKICAgIGVuZAplbmQKCiMgUmFuZG9tIGltYWdlCmZ1bmN0aW9uIHJhbmRvbS1pbWFnZQogICAgc2V0IGltYWdlcyAoZmluZCAkQ09ORklHX0RJUi9jcm9wcGVkIC10eXBlIGYgXCggLW5hbWUgIiouanBnIiAtbyAtbmFtZSAiKi5wbmciIFwpIDI+L2Rldi9udWxsKQogICAgCiAgICBpZiB0ZXN0IChjb3VudCAkaW1hZ2VzKSAtZ3QgMAogICAgICAgIHNldCByYW5kb21faW1nICRpbWFnZXNbKHJhbmRvbSAxIChjb3VudCAkaW1hZ2VzKSldCiAgICAgICAgc2V0IHRpbWVzdGFtcCAoZGF0ZSArJXMpCiAgICAgICAgc2V0IG5ld19pbWFnZSAiJENPTkZJR19ESVIvY3VycmVudC1pbWFnZS0kdGltZXN0YW1wLmpwZyIKICAgICAgICBjcCAiJHJhbmRvbV9pbWciICIkbmV3X2ltYWdlIgogICAgICAgIAogICAgICAgIGZvciBvbGQgaW4gJENPTkZJR19ESVIvY3VycmVudC1pbWFnZS0qLmpwZwogICAgICAgICAgICBpZiB0ZXN0ICIkb2xkIiAhPSAiJG5ld19pbWFnZSIKICAgICAgICAgICAgICAgIHJtIC1mICIkb2xkIgogICAgICAgICAgICBlbmQKICAgICAgICBlbmQKICAgICAgICAKICAgICAgICBzZWQgLWkgInN8XCJzb3VyY2VcIjogXCIuKlwifFwic291cmNlXCI6IFwiJG5ld19pbWFnZVwifCIgIiRDT05GSUdfRElSL2NvbmZpZy5qc29uYyIKICAgICAgICBjbGVhcgogICAgICAgIGZhc3RmZXRjaAogICAgZWxzZQogICAgICAgIGVjaG8gIk5vIGltYWdlcyBmb3VuZCIKICAgIGVuZAplbmQKCiMgTGlzdCBhbGwgYXZhaWxhYmxlIGltYWdlcwpmdW5jdGlvbiBsaXN0LWltYWdlcwogICAgZWNobyAiQXZhaWxhYmxlIGltYWdlczoiCiAgICBzZXQgaW1hZ2VzICRDT05GSUdfRElSL2Nyb3BwZWQvKi57anBnLHBuZ30KICAgIGlmIHRlc3QgLW4gIiRpbWFnZXMiCiAgICAgICAgZm9yIGltZyBpbiAkaW1hZ2VzCiAgICAgICAgICAgIGVjaG8gIiAgIihiYXNlbmFtZSAkaW1nKQogICAgICAgIGVuZAogICAgZWxzZQogICAgICAgIGVjaG8gIiAgTm8gaW1hZ2VzIGZvdW5kIgogICAgZW5kCmVuZAoKIyBQcmV2aWV3IGN1cnJlbnQgaW1hZ2UKZnVuY3Rpb24gY3VycmVudC1pbWFnZQogICAgc2V0IGN1cnJlbnQgKGdyZXAgJyJzb3VyY2UiJyAkQ09ORklHX0RJUi9jb25maWcuanNvbmMgfCBzZWQgJ3MvLioic291cmNlIjogIlwoLipcKSIuKi9cMS8nKQogICAgaWYgdGVzdCAtZiAiJGN1cnJlbnQiCiAgICAgICAgZWNobyAiQ3VycmVudCBpbWFnZTogIihiYXNlbmFtZSAkY3VycmVudCkKICAgICAgICBpZGVudGlmeSAiJGN1cnJlbnQiIDI+L2Rldi9udWxsIHwgYXdrICd7cHJpbnQgIkRpbWVuc2lvbnM6IiwgJDMsICJTaXplOiIsICQ3LzEwMjQgIktCIn0nCiAgICBlbHNlCiAgICAgICAgZWNobyAiTm8gY3VycmVudCBpbWFnZSBmb3VuZCIKICAgIGVuZAplbmQKCiMgUmUtY3JvcCBhbGwgaW1hZ2VzCmZ1bmN0aW9uIHJlY3JvcC1pbWFnZXMKICAgIGJhc2ggIiRDT05GSUdfRElSL2Nyb3AtaW1hZ2Uuc2giCiAgICBlY2hvICJBbGwgaW1hZ2VzIHJlY3JvcHBlZCEiCiAgICBlY2hvIDAgPiAiJENPTkZJR19ESVIvaW1hZ2UtaW5kZXgudHh0IgogICAgYmFzaCAiJENPTkZJR19ESVIvcm90YXRlLWltYWdlcy5zaCIKICAgIGNsZWFyCiAgICBmYXN0ZmV0Y2gKZW5kCgojIEFkZCBuZXcgaW1hZ2UKZnVuY3Rpb24gYWRkLWltYWdlCiAgICBpZiB0ZXN0IC16ICIkYXJndlsxXSIKICAgICAgICBlY2hvICJVc2FnZTogYWRkLWltYWdlIDxpbWFnZS1maWxlPiBbY3VzdG9tLW5hbWVdIgogICAgICAgIHJldHVybiAxCiAgICBlbmQKICAgIGlmIHRlc3QgLW4gIiRhcmd2WzJdIgogICAgICAgIGNwICIkYXJndlsxXSIgIiRDT05GSUdfRElSL2ltYWdlcy8kYXJndlsyXSIKICAgICAgICBlY2hvICJBZGRlZDogJGFyZ3ZbMl0iCiAgICBlbHNlCiAgICAgICAgY3AgIiRhcmd2WzFdIiAiJENPTkZJR19ESVIvaW1hZ2VzLyIKICAgICAgICBlY2hvICJBZGRlZDogIihiYXNlbmFtZSAiJGFyZ3ZbMV0iKQogICAgZW5kCiAgICByZWNyb3AtaW1hZ2VzCmVuZAoKIyBRdWljayByZWZyZXNoCmZ1bmN0aW9uIHJlZnJlc2gKICAgIGNsZWFyCiAgICBmYXN0ZmV0Y2gKZW5kCgojIEZhc3RmZXRjaCBpbWFnZSBtYW5hZ2VtZW50IGZ1bmN0aW9ucwpzZXQgLWcgQ09ORklHX0RJUiAiJEhPTUUvLmNvbmZpZy9mYXN0ZmV0Y2giCgojIFJvdGF0ZSB0byBuZXh0IGltYWdlCmZ1bmN0aW9uIG5leHQtaW1hZ2UKICAgIHNldCBuZXdfaW1hZ2UgKGJhc2ggIiRDT05GSUdfRElSL3JvdGF0ZS1pbWFnZXMuc2giKQogICAgCiAgICBpZiB0ZXN0IC1uICIkbmV3X2ltYWdlIgogICAgICAgIGZvciBvbGQgaW4gJENPTkZJR19ESVIvY3VycmVudC1pbWFnZS0qLmpwZwogICAgICAgICAgICBpZiB0ZXN0ICIkb2xkIiAhPSAiJG5ld19pbWFnZSIKICAgICAgICAgICAgICAgIHJtIC1mICIkb2xkIgogICAgICAgICAgICBlbmQKICAgICAgICBlbmQKICAgICAgICBzZWQgLWkgInN8XCJzb3VyY2VcIjogXCIuKlwifFwic291cmNlXCI6IFwiJG5ld19pbWFnZVwifCIgIiRDT05GSUdfRElSL2NvbmZpZy5qc29uYyIKICAgICAgICBjbGVhcgogICAgICAgIGZhc3RmZXRjaAogICAgZWxzZQogICAgICAgIGVjaG8gIkZhaWxlZCB0byByb3RhdGUgaW1hZ2UiCiAgICBlbmQKZW5kCgojIFJhbmRvbSBpbWFnZQpmdW5jdGlvbiByYW5kb20taW1hZ2UKICAgIHNldCBpbWFnZXMgKGZpbmQgJENPTkZJR19ESVIvY3JvcHBlZCAtdHlwZSBmIFwoIC1uYW1lICIqLmpwZyIgLW8gLW5hbWUgIioucG5nIiBcKSAyPi9kZXYvbnVsbCkKICAgIAogICAgaWYgdGVzdCAoY291bnQgJGltYWdlcykgLWd0IDAKICAgICAgICBzZXQgcmFuZG9tX2ltZyAkaW1hZ2VzWyhyYW5kb20gMSAoY291bnQgJGltYWdlcykpXQogICAgICAgIHNldCB0aW1lc3RhbXAgKGRhdGUgKyVzKQogICAgICAgIHNldCBuZXdfaW1hZ2UgIiRDT05GSUdfRElSL2N1cnJlbnQtaW1hZ2UtJHRpbWVzdGFtcC5qcGciCiAgICAgICAgY3AgIiRyYW5kb21faW1nIiAiJG5ld19pbWFnZSIKICAgICAgICAKICAgICAgICBmb3Igb2xkIGluICRDT05GSUdfRElSL2N1cnJlbnQtaW1hZ2UtKi5qcGcKICAgICAgICAgICAgaWYgdGVzdCAiJG9sZCIgIT0gIiRuZXdfaW1hZ2UiCiAgICAgICAgICAgICAgICBybSAtZiAiJG9sZCIKICAgICAgICAgICAgZW5kCiAgICAgICAgZW5kCiAgICAgICAgCiAgICAgICAgc2VkIC1pICJzfFwic291cmNlXCI6IFwiLipcInxcInNvdXJjZVwiOiBcIiRuZXdfaW1hZ2VcInwiICIkQ09ORklHX0RJUi9jb25maWcuanNvbmMiCiAgICAgICAgY2xlYXIKICAgICAgICBmYXN0ZmV0Y2gKICAgIGVsc2UKICAgICAgICBlY2hvICJObyBpbWFnZXMgZm91bmQiCiAgICBlbmQKZW5kCgojIExpc3QgYWxsIGF2YWlsYWJsZSBpbWFnZXMKZnVuY3Rpb24gbGlzdC1pbWFnZXMKICAgIGVjaG8gIkF2YWlsYWJsZSBpbWFnZXM6IgogICAgc2V0IGltYWdlcyAkQ09ORklHX0RJUi9jcm9wcGVkLyoue2pwZyxwbmd9CiAgICBpZiB0ZXN0IC1uICIkaW1hZ2VzIgogICAgICAgIGZvciBpbWcgaW4gJGltYWdlcwogICAgICAgICAgICBlY2hvICIgICIoYmFzZW5hbWUgJGltZykKICAgICAgICBlbmQKICAgIGVsc2UKICAgICAgICBlY2hvICIgIE5vIGltYWdlcyBmb3VuZCIKICAgIGVuZAplbmQKCiMgUHJldmlldyBjdXJyZW50IGltYWdlCmZ1bmN0aW9uIGN1cnJlbnQtaW1hZ2UKICAgIHNldCBjdXJyZW50IChncmVwICcic291cmNlIicgJENPTkZJR19ESVIvY29uZmlnLmpzb25jIHwgc2VkICdzLy4qInNvdXJjZSI6ICJcKC4qXCkiLiovXDEvJykKICAgIGlmIHRlc3QgLWYgIiRjdXJyZW50IgogICAgICAgIGVjaG8gIkN1cnJlbnQgaW1hZ2U6ICIoYmFzZW5hbWUgJGN1cnJlbnQpCiAgICAgICAgaWRlbnRpZnkgIiRjdXJyZW50IiAyPi9kZXYvbnVsbCB8IGF3ayAne3ByaW50ICJEaW1lbnNpb25zOiIsICQzLCAiU2l6ZToiLCAkNy8xMDI0ICJLQiJ9JwogICAgZWxzZQogICAgICAgIGVjaG8gIk5vIGN1cnJlbnQgaW1hZ2UgZm91bmQiCiAgICBlbmQKZW5kCgojIFJlLWNyb3AgYWxsIGltYWdlcwpmdW5jdGlvbiByZWNyb3AtaW1hZ2VzCiAgICBiYXNoICIkQ09ORklHX0RJUi9jcm9wLWltYWdlLnNoIgogICAgZWNobyAiQWxsIGltYWdlcyByZWNyb3BwZWQhIgogICAgZWNobyAwID4gIiRDT05GSUdfRElSL2ltYWdlLWluZGV4LnR4dCIKICAgIGJhc2ggIiRDT05GSUdfRElSL3JvdGF0ZS1pbWFnZXMuc2giCiAgICBjbGVhcgogICAgZmFzdGZldGNoCmVuZAoKIyBBZGQgbmV3IGltYWdlCmZ1bmN0aW9uIGFkZC1pbWFnZQogICAgaWYgdGVzdCAteiAiJGFyZ3ZbMV0iCiAgICAgICAgZWNobyAiVXNhZ2U6IGFkZC1pbWFnZSA8aW1hZ2UtZmlsZT4gW2N1c3RvbS1uYW1lXSIKICAgICAgICByZXR1cm4gMQogICAgZW5kCiAgICBpZiB0ZXN0IC1uICIkYXJndlsyXSIKICAgICAgICBjcCAiJGFyZ3ZbMV0iICIkQ09ORklHX0RJUi9pbWFnZXMvJGFyZ3ZbMl0iCiAgICAgICAgZWNobyAiQWRkZWQ6ICRhcmd2WzJdIgogICAgZWxzZQogICAgICAgIGNwICIkYXJndlsxXSIgIiRDT05GSUdfRElSL2ltYWdlcy8iCiAgICAgICAgZWNobyAiQWRkZWQ6ICIoYmFzZW5hbWUgIiRhcmd2WzFdIikKICAgIGVuZAogICAgcmVjcm9wLWltYWdlcwplbmQKCiMgUXVpY2sgcmVmcmVzaApmdW5jdGlvbiByZWZyZXNoCiAgICBjbGVhcgogICAgZmFzdGZldGNoCmVuZAoKIyBGYXN0ZmV0Y2ggaW1hZ2UgbWFuYWdlbWVudCBmdW5jdGlvbnMKc2V0IC1nIENPTkZJR19ESVIgIiRIT01FLy5jb25maWcvZmFzdGZldGNoIgoKIyBSb3RhdGUgdG8gbmV4dCBpbWFnZQpmdW5jdGlvbiBuZXh0LWltYWdlCiAgICBzZXQgbmV3X2ltYWdlIChiYXNoICIkQ09ORklHX0RJUi9yb3RhdGUtaW1hZ2VzLnNoIikKICAgIAogICAgaWYgdGVzdCAtbiAiJG5ld19pbWFnZSIKICAgICAgICBmb3Igb2xkIGluICRDT05GSUdfRElSL2N1cnJlbnQtaW1hZ2UtKi5qcGcKICAgICAgICAgICAgaWYgdGVzdCAiJG9sZCIgIT0gIiRuZXdfaW1hZ2UiCiAgICAgICAgICAgICAgICBybSAtZiAiJG9sZCIKICAgICAgICAgICAgZW5kCiAgICAgICAgZW5kCiAgICAgICAgc2VkIC1pICJzfFwic291cmNlXCI6IFwiLipcInxcInNvdXJjZVwiOiBcIiRuZXdfaW1hZ2VcInwiICIkQ09ORklHX0RJUi9jb25maWcuanNvbmMiCiAgICAgICAgY2xlYXIKICAgICAgICBmYXN0ZmV0Y2gKICAgIGVsc2UKICAgICAgICBlY2hvICJGYWlsZWQgdG8gcm90YXRlIGltYWdlIgogICAgZW5kCmVuZAoKIyBSYW5kb20gaW1hZ2UKZnVuY3Rpb24gcmFuZG9tLWltYWdlCiAgICBzZXQgaW1hZ2VzIChmaW5kICRDT05GSUdfRElSL2Nyb3BwZWQgLXR5cGUgZiBcKCAtbmFtZSAiKi5qcGciIC1vIC1uYW1lICIqLnBuZyIgXCkgMj4vZGV2L251bGwpCiAgICAKICAgIGlmIHRlc3QgKGNvdW50ICRpbWFnZXMpIC1ndCAwCiAgICAgICAgc2V0IHJhbmRvbV9pbWcgJGltYWdlc1socmFuZG9tIDEgKGNvdW50ICRpbWFnZXMpKV0KICAgICAgICBzZXQgdGltZXN0YW1wIChkYXRlICslcykKICAgICAgICBzZXQgbmV3X2ltYWdlICIkQ09ORklHX0RJUi9jdXJyZW50LWltYWdlLSR0aW1lc3RhbXAuanBnIgogICAgICAgIGNwICIkcmFuZG9tX2ltZyIgIiRuZXdfaW1hZ2UiCiAgICAgICAgCiAgICAgICAgZm9yIG9sZCBpbiAkQ09ORklHX0RJUi9jdXJyZW50LWltYWdlLSouanBnCiAgICAgICAgICAgIGlmIHRlc3QgIiRvbGQiICE9ICIkbmV3X2ltYWdlIgogICAgICAgICAgICAgICAgcm0gLWYgIiRvbGQiCiAgICAgICAgICAgIGVuZAogICAgICAgIGVuZAogICAgICAgIAogICAgICAgIHNlZCAtaSAic3xcInNvdXJjZVwiOiBcIi4qXCJ8XCJzb3VyY2VcIjogXCIkbmV3X2ltYWdlXCJ8IiAiJENPTkZJR19ESVIvY29uZmlnLmpzb25jIgogICAgICAgIGNsZWFyCiAgICAgICAgZmFzdGZldGNoCiAgICBlbHNlCiAgICAgICAgZWNobyAiTm8gaW1hZ2VzIGZvdW5kIgogICAgZW5kCmVuZAoKIyBMaXN0IGFsbCBhdmFpbGFibGUgaW1hZ2VzCmZ1bmN0aW9uIGxpc3QtaW1hZ2VzCiAgICBlY2hvICJBdmFpbGFibGUgaW1hZ2VzOiIKICAgIHNldCBpbWFnZXMgJENPTkZJR19ESVIvY3JvcHBlZC8qLntqcGcscG5nfQogICAgaWYgdGVzdCAtbiAiJGltYWdlcyIKICAgICAgICBmb3IgaW1nIGluICRpbWFnZXMKICAgICAgICAgICAgZWNobyAiICAiKGJhc2VuYW1lICRpbWcpCiAgICAgICAgZW5kCiAgICBlbHNlCiAgICAgICAgZWNobyAiICBObyBpbWFnZXMgZm91bmQiCiAgICBlbmQKZW5kCgojIFByZXZpZXcgY3VycmVudCBpbWFnZQpmdW5jdGlvbiBjdXJyZW50LWltYWdlCiAgICBzZXQgY3VycmVudCAoZ3JlcCAnInNvdXJjZSInICRDT05GSUdfRElSL2NvbmZpZy5qc29uYyB8IHNlZCAncy8uKiJzb3VyY2UiOiAiXCguKlwpIi4qL1wxLycpCiAgICBpZiB0ZXN0IC1mICIkY3VycmVudCIKICAgICAgICBlY2hvICJDdXJyZW50IGltYWdlOiAiKGJhc2VuYW1lICRjdXJyZW50KQogICAgICAgIGlkZW50aWZ5ICIkY3VycmVudCIgMj4vZGV2L251bGwgfCBhd2sgJ3twcmludCAiRGltZW5zaW9uczoiLCAkMywgIlNpemU6IiwgJDcvMTAyNCAiS0IifScKICAgIGVsc2UKICAgICAgICBlY2hvICJObyBjdXJyZW50IGltYWdlIGZvdW5kIgogICAgZW5kCmVuZAoKIyBSZS1jcm9wIGFsbCBpbWFnZXMKZnVuY3Rpb24gcmVjcm9wLWltYWdlcwogICAgYmFzaCAiJENPTkZJR19ESVIvY3JvcC1pbWFnZS5zaCIKICAgIGVjaG8gIkFsbCBpbWFnZXMgcmVjcm9wcGVkISIKICAgIGVjaG8gMCA+ICIkQ09ORklHX0RJUi9pbWFnZS1pbmRleC50eHQiCiAgICBiYXNoICIkQ09ORklHX0RJUi9yb3RhdGUtaW1hZ2VzLnNoIgogICAgY2xlYXIKICAgIGZhc3RmZXRjaAplbmQKCiMgQWRkIG5ldyBpbWFnZQpmdW5jdGlvbiBhZGQtaW1hZ2UKICAgIGlmIHRlc3QgLXogIiRhcmd2WzFdIgogICAgICAgIGVjaG8gIlVzYWdlOiBhZGQtaW1hZ2UgPGltYWdlLWZpbGU+IFtjdXN0b20tbmFtZV0iCiAgICAgICAgcmV0dXJuIDEKICAgIGVuZAogICAgaWYgdGVzdCAtbiAiJGFyZ3ZbMl0iCiAgICAgICAgY3AgIiRhcmd2WzFdIiAiJENPTkZJR19ESVIvaW1hZ2VzLyRhcmd2WzJdIgogICAgICAgIGVjaG8gIkFkZGVkOiAkYXJndlsyXSIKICAgIGVsc2UKICAgICAgICBjcCAiJGFyZ3ZbMV0iICIkQ09ORklHX0RJUi9pbWFnZXMvIgogICAgICAgIGVjaG8gIkFkZGVkOiAiKGJhc2VuYW1lICIkYXJndlsxXSIpCiAgICBlbmQKICAgIHJlY3JvcC1pbWFnZXMKZW5kCgojIFF1aWNrIHJlZnJlc2gKZnVuY3Rpb24gcmVmcmVzaAogICAgY2xlYXIKICAgIGZhc3RmZXRjaAplbmQKCiMgRmFzdGZldGNoIGltYWdlIG1hbmFnZW1lbnQgZnVuY3Rpb25zCnNldCAtZyBDT05GSUdfRElSICIkSE9NRS8uY29uZmlnL2Zhc3RmZXRjaCIKCiMgUm90YXRlIHRvIG5leHQgaW1hZ2UKZnVuY3Rpb24gbmV4dC1pbWFnZQogICAgc2V0IG5ld19pbWFnZSAoYmFzaCAiJENPTkZJR19ESVIvcm90YXRlLWltYWdlcy5zaCIpCiAgICAKICAgIGlmIHRlc3QgLW4gIiRuZXdfaW1hZ2UiCiAgICAgICAgZm9yIG9sZCBpbiAkQ09ORklHX0RJUi9jdXJyZW50LWltYWdlLSouanBnCiAgICAgICAgICAgIGlmIHRlc3QgIiRvbGQiICE9ICIkbmV3X2ltYWdlIgogICAgICAgICAgICAgICAgcm0gLWYgIiRvbGQiCiAgICAgICAgICAgIGVuZAogICAgICAgIGVuZAogICAgICAgIHNlZCAtaSAic3xcInNvdXJjZVwiOiBcIi4qXCJ8XCJzb3VyY2VcIjogXCIkbmV3X2ltYWdlXCJ8IiAiJENPTkZJR19ESVIvY29uZmlnLmpzb25jIgogICAgICAgIGNsZWFyCiAgICAgICAgZmFzdGZldGNoCiAgICBlbHNlCiAgICAgICAgZWNobyAiRmFpbGVkIHRvIHJvdGF0ZSBpbWFnZSIKICAgIGVuZAplbmQKCiMgUmFuZG9tIGltYWdlCmZ1bmN0aW9uIHJhbmRvbS1pbWFnZQogICAgc2V0IGltYWdlcyAoZmluZCAkQ09ORklHX0RJUi9jcm9wcGVkIC10eXBlIGYgXCggLW5hbWUgIiouanBnIiAtbyAtbmFtZSAiKi5wbmciIFwpIDI+L2Rldi9udWxsKQogICAgCiAgICBpZiB0ZXN0IChjb3VudCAkaW1hZ2VzKSAtZ3QgMAogICAgICAgIHNldCByYW5kb21faW1nICRpbWFnZXNbKHJhbmRvbSAxIChjb3VudCAkaW1hZ2VzKSldCiAgICAgICAgc2V0IHRpbWVzdGFtcCAoZGF0ZSArJXMpCiAgICAgICAgc2V0IG5ld19pbWFnZSAiJENPTkZJR19ESVIvY3VycmVudC1pbWFnZS0kdGltZXN0YW1wLmpwZyIKICAgICAgICBjcCAiJHJhbmRvbV9pbWciICIkbmV3X2ltYWdlIgogICAgICAgIAogICAgICAgIGZvciBvbGQgaW4gJENPTkZJR19ESVIvY3VycmVudC1pbWFnZS0qLmpwZwogICAgICAgICAgICBpZiB0ZXN0ICIkb2xkIiAhPSAiJG5ld19pbWFnZSIKICAgICAgICAgICAgICAgIHJtIC1mICIkb2xkIgogICAgICAgICAgICBlbmQKICAgICAgICBlbmQKICAgICAgICAKICAgICAgICBzZWQgLWkgInN8XCJzb3VyY2VcIjogXCIuKlwifFwic291cmNlXCI6IFwiJG5ld19pbWFnZVwifCIgIiRDT05GSUdfRElSL2NvbmZpZy5qc29uYyIKICAgICAgICBjbGVhcgogICAgICAgIGZhc3RmZXRjaAogICAgZWxzZQogICAgICAgIGVjaG8gIk5vIGltYWdlcyBmb3VuZCIKICAgIGVuZAplbmQKCiMgTGlzdCBhbGwgYXZhaWxhYmxlIGltYWdlcwpmdW5jdGlvbiBsaXN0LWltYWdlcwogICAgZWNobyAiQXZhaWxhYmxlIGltYWdlczoiCiAgICBzZXQgaW1hZ2VzICRDT05GSUdfRElSL2Nyb3BwZWQvKi57anBnLHBuZ30KICAgIGlmIHRlc3QgLW4gIiRpbWFnZXMiCiAgICAgICAgZm9yIGltZyBpbiAkaW1hZ2VzCiAgICAgICAgICAgIGVjaG8gIiAgIihiYXNlbmFtZSAkaW1nKQogICAgICAgIGVuZAogICAgZWxzZQogICAgICAgIGVjaG8gIiAgTm8gaW1hZ2VzIGZvdW5kIgogICAgZW5kCmVuZAoKIyBQcmV2aWV3IGN1cnJlbnQgaW1hZ2UKZnVuY3Rpb24gY3VycmVudC1pbWFnZQogICAgc2V0IGN1cnJlbnQgKGdyZXAgJyJzb3VyY2UiJyAkQ09ORklHX0RJUi9jb25maWcuanNvbmMgfCBzZWQgJ3MvLioic291cmNlIjogIlwoLipcKSIuKi9cMS8nKQogICAgaWYgdGVzdCAtZiAiJGN1cnJlbnQiCiAgICAgICAgZWNobyAiQ3VycmVudCBpbWFnZTogIihiYXNlbmFtZSAkY3VycmVudCkKICAgICAgICBpZGVudGlmeSAiJGN1cnJlbnQiIDI+L2Rldi9udWxsIHwgYXdrICd7cHJpbnQgIkRpbWVuc2lvbnM6IiwgJDMsICJTaXplOiIsICQ3LzEwMjQgIktCIn0nCiAgICBlbHNlCiAgICAgICAgZWNobyAiTm8gY3VycmVudCBpbWFnZSBmb3VuZCIKICAgIGVuZAplbmQKCiMgUmUtY3JvcCBhbGwgaW1hZ2VzCmZ1bmN0aW9uIHJlY3JvcC1pbWFnZXMKICAgIGJhc2ggIiRDT05GSUdfRElSL2Nyb3AtaW1hZ2Uuc2giCiAgICBlY2hvICJBbGwgaW1hZ2VzIHJlY3JvcHBlZCEiCiAgICBlY2hvIDAgPiAiJENPTkZJR19ESVIvaW1hZ2UtaW5kZXgudHh0IgogICAgYmFzaCAiJENPTkZJR19ESVIvcm90YXRlLWltYWdlcy5zaCIKICAgIGNsZWFyCiAgICBmYXN0ZmV0Y2gKZW5kCgojIEFkZCBuZXcgaW1hZ2UKZnVuY3Rpb24gYWRkLWltYWdlCiAgICBpZiB0ZXN0IC16ICIkYXJndlsxXSIKICAgICAgICBlY2hvICJVc2FnZTogYWRkLWltYWdlIDxpbWFnZS1maWxlPiBbY3VzdG9tLW5hbWVdIgogICAgICAgIHJldHVybiAxCiAgICBlbmQKICAgIGlmIHRlc3QgLW4gIiRhcmd2WzJdIgogICAgICAgIGNwICIkYXJndlsxXSIgIiRDT05GSUdfRElSL2ltYWdlcy8kYXJndlsyXSIKICAgICAgICBlY2hvICJBZGRlZDogJGFyZ3ZbMl0iCiAgICBlbHNlCiAgICAgICAgY3AgIiRhcmd2WzFdIiAiJENPTkZJR19ESVIvaW1hZ2VzLyIKICAgICAgICBlY2hvICJBZGRlZDogIihiYXNlbmFtZSAiJGFyZ3ZbMV0iKQogICAgZW5kCiAgICByZWNyb3AtaW1hZ2VzCmVuZAoKIyBRdWljayByZWZyZXNoCmZ1bmN0aW9uIHJlZnJlc2gKICAgIGNsZWFyCiAgICBmYXN0ZmV0Y2gKZW5kCgojIEZhc3RmZXRjaCBpbWFnZSBtYW5hZ2VtZW50IGZ1bmN0aW9ucwpzZXQgLWcgQ09ORklHX0RJUiAiJEhPTUUvLmNvbmZpZy9mYXN0ZmV0Y2giCgojIFJvdGF0ZSB0byBuZXh0IGltYWdlCmZ1bmN0aW9uIG5leHQtaW1hZ2UKICAgIHNldCBuZXdfaW1hZ2UgKGJhc2ggIiRDT05GSUdfRElSL3JvdGF0ZS1pbWFnZXMuc2giKQogICAgCiAgICBpZiB0ZXN0IC1uICIkbmV3X2ltYWdlIgogICAgICAgIGZvciBvbGQgaW4gJENPTkZJR19ESVIvY3VycmVudC1pbWFnZS0qLmpwZwogICAgICAgICAgICBpZiB0ZXN0ICIkb2xkIiAhPSAiJG5ld19pbWFnZSIKICAgICAgICAgICAgICAgIHJtIC1mICIkb2xkIgogICAgICAgICAgICBlbmQKICAgICAgICBlbmQKICAgICAgICBzZWQgLWkgInN8XCJzb3VyY2VcIjogXCIuKlwifFwic291cmNlXCI6IFwiJG5ld19pbWFnZVwifCIgIiRDT05GSUdfRElSL2NvbmZpZy5qc29uYyIKICAgICAgICBjbGVhcgogICAgICAgIGZhc3RmZXRjaAogICAgZWxzZQogICAgICAgIGVjaG8gIkZhaWxlZCB0byByb3RhdGUgaW1hZ2UiCiAgICBlbmQKZW5kCgojIFJhbmRvbSBpbWFnZQpmdW5jdGlvbiByYW5kb20taW1hZ2UKICAgIHNldCBpbWFnZXMgKGZpbmQgJENPTkZJR19ESVIvY3JvcHBlZCAtdHlwZSBmIFwoIC1uYW1lICIqLmpwZyIgLW8gLW5hbWUgIioucG5nIiBcKSAyPi9kZXYvbnVsbCkKICAgIAogICAgaWYgdGVzdCAoY291bnQgJGltYWdlcykgLWd0IDAKICAgICAgICBzZXQgcmFuZG9tX2ltZyAkaW1hZ2VzWyhyYW5kb20gMSAoY291bnQgJGltYWdlcykpXQogICAgICAgIHNldCB0aW1lc3RhbXAgKGRhdGUgKyVzKQogICAgICAgIHNldCBuZXdfaW1hZ2UgIiRDT05GSUdfRElSL2N1cnJlbnQtaW1hZ2UtJHRpbWVzdGFtcC5qcGciCiAgICAgICAgY3AgIiRyYW5kb21faW1nIiAiJG5ld19pbWFnZSIKICAgICAgICAKICAgICAgICBmb3Igb2xkIGluICRDT05GSUdfRElSL2N1cnJlbnQtaW1hZ2UtKi5qcGcKICAgICAgICAgICAgaWYgdGVzdCAiJG9sZCIgIT0gIiRuZXdfaW1hZ2UiCiAgICAgICAgICAgICAgICBybSAtZiAiJG9sZCIKICAgICAgICAgICAgZW5kCiAgICAgICAgZW5kCiAgICAgICAgCiAgICAgICAgc2VkIC1pICJzfFwic291cmNlXCI6IFwiLipcInxcInNvdXJjZVwiOiBcIiRuZXdfaW1hZ2VcInwiICIkQ09ORklHX0RJUi9jb25maWcuanNvbmMiCiAgICAgICAgY2xlYXIKICAgICAgICBmYXN0ZmV0Y2gKICAgIGVsc2UKICAgICAgICBlY2hvICJObyBpbWFnZXMgZm91bmQiCiAgICBlbmQKZW5kCgojIExpc3QgYWxsIGF2YWlsYWJsZSBpbWFnZXMKZnVuY3Rpb24gbGlzdC1pbWFnZXMKICAgIGVjaG8gIkF2YWlsYWJsZSBpbWFnZXM6IgogICAgc2V0IGltYWdlcyAkQ09ORklHX0RJUi9jcm9wcGVkLyoue2pwZyxwbmd9CiAgICBpZiB0ZXN0IC1uICIkaW1hZ2VzIgogICAgICAgIGZvciBpbWcgaW4gJGltYWdlcwogICAgICAgICAgICBlY2hvICIgICIoYmFzZW5hbWUgJGltZykKICAgICAgICBlbmQKICAgIGVsc2UKICAgICAgICBlY2hvICIgIE5vIGltYWdlcyBmb3VuZCIKICAgIGVuZAplbmQKCiMgUHJldmlldyBjdXJyZW50IGltYWdlCmZ1bmN0aW9uIGN1cnJlbnQtaW1hZ2UKICAgIHNldCBjdXJyZW50IChncmVwICcic291cmNlIicgJENPTkZJR19ESVIvY29uZmlnLmpzb25jIHwgc2VkICdzLy4qInNvdXJjZSI6ICJcKC4qXCkiLiovXDEvJykKICAgIGlmIHRlc3QgLWYgIiRjdXJyZW50IgogICAgICAgIGVjaG8gIkN1cnJlbnQgaW1hZ2U6ICIoYmFzZW5hbWUgJGN1cnJlbnQpCiAgICAgICAgaWRlbnRpZnkgIiRjdXJyZW50IiAyPi9kZXYvbnVsbCB8IGF3ayAne3ByaW50ICJEaW1lbnNpb25zOiIsICQzLCAiU2l6ZToiLCAkNy8xMDI0ICJLQiJ9JwogICAgZWxzZQogICAgICAgIGVjaG8gIk5vIGN1cnJlbnQgaW1hZ2UgZm91bmQiCiAgICBlbmQKZW5kCgojIFJlLWNyb3AgYWxsIGltYWdlcwpmdW5jdGlvbiByZWNyb3AtaW1hZ2VzCiAgICBiYXNoICIkQ09ORklHX0RJUi9jcm9wLWltYWdlLnNoIgogICAgZWNobyAiQWxsIGltYWdlcyByZWNyb3BwZWQhIgogICAgZWNobyAwID4gIiRDT05GSUdfRElSL2ltYWdlLWluZGV4LnR4dCIKICAgIGJhc2ggIiRDT05GSUdfRElSL3JvdGF0ZS1pbWFnZXMuc2giCiAgICBjbGVhcgogICAgZmFzdGZldGNoCmVuZAoKIyBBZGQgbmV3IGltYWdlCmZ1bmN0aW9uIGFkZC1pbWFnZQogICAgaWYgdGVzdCAteiAiJGFyZ3ZbMV0iCiAgICAgICAgZWNobyAiVXNhZ2U6IGFkZC1pbWFnZSA8aW1hZ2UtZmlsZT4gW2N1c3RvbS1uYW1lXSIKICAgICAgICByZXR1cm4gMQogICAgZW5kCiAgICBpZiB0ZXN0IC1uICIkYXJndlsyXSIKICAgICAgICBjcCAiJGFyZ3ZbMV0iICIkQ09ORklHX0RJUi9pbWFnZXMvJGFyZ3ZbMl0iCiAgICAgICAgZWNobyAiQWRkZWQ6ICRhcmd2WzJdIgogICAgZWxzZQogICAgICAgIGNwICIkYXJndlsxXSIgIiRDT05GSUdfRElSL2ltYWdlcy8iCiAgICAgICAgZWNobyAiQWRkZWQ6ICIoYmFzZW5hbWUgIiRhcmd2WzFdIikKICAgIGVuZAogICAgcmVjcm9wLWltYWdlcwplbmQKCiMgUXVpY2sgcmVmcmVzaApmdW5jdGlvbiByZWZyZXNoCiAgICBjbGVhcgogICAgZmFzdGZldGNoCmVuZAoKIyBGYXN0ZmV0Y2ggaW1hZ2UgbWFuYWdlbWVudCBmdW5jdGlvbnMKc2V0IC1nIENPTkZJR19ESVIgIiRIT01FLy5jb25maWcvZmFzdGZldGNoIgoKIyBSb3RhdGUgdG8gbmV4dCBpbWFnZQpmdW5jdGlvbiBuZXh0LWltYWdlCiAgICBzZXQgbmV3X2ltYWdlIChiYXNoICIkQ09ORklHX0RJUi9yb3RhdGUtaW1hZ2VzLnNoIikKICAgIAogICAgaWYgdGVzdCAtbiAiJG5ld19pbWFnZSIKICAgICAgICBmb3Igb2xkIGluICRDT05GSUdfRElSL2N1cnJlbnQtaW1hZ2UtKi5qcGcKICAgICAgICAgICAgaWYgdGVzdCAiJG9sZCIgIT0gIiRuZXdfaW1hZ2UiCiAgICAgICAgICAgICAgICBybSAtZiAiJG9sZCIKICAgICAgICAgICAgZW5kCiAgICAgICAgZW5kCiAgICAgICAgc2VkIC1pICJzfFwic291cmNlXCI6IFwiLipcInxcInNvdXJjZVwiOiBcIiRuZXdfaW1hZ2VcInwiICIkQ09ORklHX0RJUi9jb25maWcuanNvbmMiCiAgICAgICAgY2xlYXIKICAgICAgICBmYXN0ZmV0Y2gKICAgIGVsc2UKICAgICAgICBlY2hvICJGYWlsZWQgdG8gcm90YXRlIGltYWdlIgogICAgZW5kCmVuZAoKIyBSYW5kb20gaW1hZ2UKZnVuY3Rpb24gcmFuZG9tLWltYWdlCiAgICBzZXQgaW1hZ2VzIChmaW5kICRDT05GSUdfRElSL2Nyb3BwZWQgLXR5cGUgZiBcKCAtbmFtZSAiKi5qcGciIC1vIC1uYW1lICIqLnBuZyIgXCkgMj4vZGV2L251bGwpCiAgICAKICAgIGlmIHRlc3QgKGNvdW50ICRpbWFnZXMpIC1ndCAwCiAgICAgICAgc2V0IHJhbmRvbV9pbWcgJGltYWdlc1socmFuZG9tIDEgKGNvdW50ICRpbWFnZXMpKV0KICAgICAgICBzZXQgdGltZXN0YW1wIChkYXRlICslcykKICAgICAgICBzZXQgbmV3X2ltYWdlICIkQ09ORklHX0RJUi9jdXJyZW50LWltYWdlLSR0aW1lc3RhbXAuanBnIgogICAgICAgIGNwICIkcmFuZG9tX2ltZyIgIiRuZXdfaW1hZ2UiCiAgICAgICAgCiAgICAgICAgZm9yIG9sZCBpbiAkQ09ORklHX0RJUi9jdXJyZW50LWltYWdlLSouanBnCiAgICAgICAgICAgIGlmIHRlc3QgIiRvbGQiICE9ICIkbmV3X2ltYWdlIgogICAgICAgICAgICAgICAgcm0gLWYgIiRvbGQiCiAgICAgICAgICAgIGVuZAogICAgICAgIGVuZAogICAgICAgIAogICAgICAgIHNlZCAtaSAic3xcInNvdXJjZVwiOiBcIi4qXCJ8XCJzb3VyY2VcIjogXCIkbmV3X2ltYWdlXCJ8IiAiJENPTkZJR19ESVIvY29uZmlnLmpzb25jIgogICAgICAgIGNsZWFyCiAgICAgICAgZmFzdGZldGNoCiAgICBlbHNlCiAgICAgICAgZWNobyAiTm8gaW1hZ2VzIGZvdW5kIgogICAgZW5kCmVuZAoKIyBMaXN0IGFsbCBhdmFpbGFibGUgaW1hZ2VzCmZ1bmN0aW9uIGxpc3QtaW1hZ2VzCiAgICBlY2hvICJBdmFpbGFibGUgaW1hZ2VzOiIKICAgIHNldCBpbWFnZXMgJENPTkZJR19ESVIvY3JvcHBlZC8qLntqcGcscG5nfQogICAgaWYgdGVzdCAtbiAiJGltYWdlcyIKICAgICAgICBmb3IgaW1nIGluICRpbWFnZXMKICAgICAgICAgICAgZWNobyAiICAiKGJhc2VuYW1lICRpbWcpCiAgICAgICAgZW5kCiAgICBlbHNlCiAgICAgICAgZWNobyAiICBObyBpbWFnZXMgZm91bmQiCiAgICBlbmQKZW5kCgojIFByZXZpZXcgY3VycmVudCBpbWFnZQpmdW5jdGlvbiBjdXJyZW50LWltYWdlCiAgICBzZXQgY3VycmVudCAoZ3JlcCAnInNvdXJjZSInICRDT05GSUdfRElSL2NvbmZpZy5qc29uYyB8IHNlZCAncy8uKiJzb3VyY2UiOiAiXCguKlwpIi4qL1wxLycpCiAgICBpZiB0ZXN0IC1mICIkY3VycmVudCIKICAgICAgICBlY2hvICJDdXJyZW50IGltYWdlOiAiKGJhc2VuYW1lICRjdXJyZW50KQogICAgICAgIGlkZW50aWZ5ICIkY3VycmVudCIgMj4vZGV2L251bGwgfCBhd2sgJ3twcmludCAiRGltZW5zaW9uczoiLCAkMywgIlNpemU6IiwgJDcvMTAyNCAiS0IifScKICAgIGVsc2UKICAgICAgICBlY2hvICJObyBjdXJyZW50IGltYWdlIGZvdW5kIgogICAgZW5kCmVuZAoKIyBSZS1jcm9wIGFsbCBpbWFnZXMKZnVuY3Rpb24gcmVjcm9wLWltYWdlcwogICAgIyBDbGVhbiBjdXJyZW50IGltYWdlIGZpbGVzCiAgICBybSAtZiAkQ09ORklHX0RJUi9jdXJyZW50LWltYWdlLSouanBnCiAgICBybSAtZiAkQ09ORklHX0RJUi9pbWFnZS1pbmRleC50eHQKICAgIAogICAgIyBSdW4gY3JvcCBzY3JpcHQKICAgIGJhc2ggIiRDT05GSUdfRElSL2Nyb3AtaW1hZ2Uuc2giCiAgICAKICAgICMgUmVzZXQgYW5kIHNob3cgZmlyc3QgaW1hZ2UKICAgIGVjaG8gMCA+ICIkQ09ORklHX0RJUi9pbWFnZS1pbmRleC50eHQiCiAgICBiYXNoICIkQ09ORklHX0RJUi9yb3RhdGUtaW1hZ2VzLnNoIgogICAgY2xlYXIKICAgIGZhc3RmZXRjaAplbmQKCiMgQWRkIG5ldyBpbWFnZQpmdW5jdGlvbiBhZGQtaW1hZ2UKICAgIGlmIHRlc3QgLXogIiRhcmd2WzFdIgogICAgICAgIGVjaG8gIlVzYWdlOiBhZGQtaW1hZ2UgPGltYWdlLWZpbGU+IFtjdXN0b20tbmFtZV0iCiAgICAgICAgcmV0dXJuIDEKICAgIGVuZAogICAgaWYgdGVzdCAtbiAiJGFyZ3ZbMl0iCiAgICAgICAgY3AgIiRhcmd2WzFdIiAiJENPTkZJR19ESVIvaW1hZ2VzLyRhcmd2WzJdIgogICAgICAgIGVjaG8gIkFkZGVkOiAkYXJndlsyXSIKICAgIGVsc2UKICAgICAgICBjcCAiJGFyZ3ZbMV0iICIkQ09ORklHX0RJUi9pbWFnZXMvIgogICAgICAgIGVjaG8gIkFkZGVkOiAiKGJhc2VuYW1lICIkYXJndlsxXSIpCiAgICBlbmQKICAgIHJlY3JvcC1pbWFnZXMKZW5kCgojIFF1aWNrIHJlZnJlc2gKZnVuY3Rpb24gcmVmcmVzaAogICAgY2xlYXIKICAgIGZhc3RmZXRjaAplbmQKCiMgQ2xlYW4gYW5kIHJlY3JvcCBhbGwKZnVuY3Rpb24gY2xlYW4tYWxsCiAgICBlY2hvICJDbGVhbmluZyBhbGwgaW1hZ2VzLi4uIgogICAgcm0gLWYgJENPTkZJR19ESVIvY3JvcHBlZC8qLntqcGcscG5nfQogICAgcm0gLWYgJENPTkZJR19ESVIvY3VycmVudC1pbWFnZS0qLmpwZwogICAgcm0gLWYgJENPTkZJR19ESVIvaW1hZ2UtaW5kZXgudHh0CiAgICBlY2hvICLinJMgQ2xlYW5lZCIKICAgIHJlY3JvcC1pbWFnZXMKZW5kCgojIEZhc3RmZXRjaCBpbWFnZSBtYW5hZ2VtZW50IGZ1bmN0aW9ucwpzZXQgLWcgQ09ORklHX0RJUiAiJEhPTUUvLmNvbmZpZy9mYXN0ZmV0Y2giCgojIFJvdGF0ZSB0byBuZXh0IGltYWdlCmZ1bmN0aW9uIG5leHQtaW1hZ2UKICAgIHNldCBuZXdfaW1hZ2UgKGJhc2ggIiRDT05GSUdfRElSL3JvdGF0ZS1pbWFnZXMuc2giKQogICAgCiAgICBpZiB0ZXN0IC1uICIkbmV3X2ltYWdlIgogICAgICAgIGZvciBvbGQgaW4gJENPTkZJR19ESVIvY3VycmVudC1pbWFnZS0qLmpwZwogICAgICAgICAgICBpZiB0ZXN0ICIkb2xkIiAhPSAiJG5ld19pbWFnZSIKICAgICAgICAgICAgICAgIHJtIC1mICIkb2xkIgogICAgICAgICAgICBlbmQKICAgICAgICBlbmQKICAgICAgICBzZWQgLWkgInN8XCJzb3VyY2VcIjogXCIuKlwifFwic291cmNlXCI6IFwiJG5ld19pbWFnZVwifCIgIiRDT05GSUdfRElSL2NvbmZpZy5qc29uYyIKICAgICAgICBjbGVhcgogICAgICAgIGZhc3RmZXRjaAogICAgZWxzZQogICAgICAgIGVjaG8gIkZhaWxlZCB0byByb3RhdGUgaW1hZ2UiCiAgICBlbmQKZW5kCgojIFJhbmRvbSBpbWFnZQpmdW5jdGlvbiByYW5kb20taW1hZ2UKICAgIHNldCBpbWFnZXMgKGZpbmQgJENPTkZJR19ESVIvY3JvcHBlZCAtdHlwZSBmIFwoIC1uYW1lICIqLmpwZyIgLW8gLW5hbWUgIioucG5nIiBcKSAyPi9kZXYvbnVsbCkKICAgIAogICAgaWYgdGVzdCAoY291bnQgJGltYWdlcykgLWd0IDAKICAgICAgICBzZXQgcmFuZG9tX2ltZyAkaW1hZ2VzWyhyYW5kb20gMSAoY291bnQgJGltYWdlcykpXQogICAgICAgIHNldCB0aW1lc3RhbXAgKGRhdGUgKyVzKQogICAgICAgIHNldCBuZXdfaW1hZ2UgIiRDT05GSUdfRElSL2N1cnJlbnQtaW1hZ2UtJHRpbWVzdGFtcC5qcGciCiAgICAgICAgY3AgIiRyYW5kb21faW1nIiAiJG5ld19pbWFnZSIKICAgICAgICAKICAgICAgICBmb3Igb2xkIGluICRDT05GSUdfRElSL2N1cnJlbnQtaW1hZ2UtKi5qcGcKICAgICAgICAgICAgaWYgdGVzdCAiJG9sZCIgIT0gIiRuZXdfaW1hZ2UiCiAgICAgICAgICAgICAgICBybSAtZiAiJG9sZCIKICAgICAgICAgICAgZW5kCiAgICAgICAgZW5kCiAgICAgICAgCiAgICAgICAgc2VkIC1pICJzfFwic291cmNlXCI6IFwiLipcInxcInNvdXJjZVwiOiBcIiRuZXdfaW1hZ2VcInwiICIkQ09ORklHX0RJUi9jb25maWcuanNvbmMiCiAgICAgICAgY2xlYXIKICAgICAgICBmYXN0ZmV0Y2gKICAgIGVsc2UKICAgICAgICBlY2hvICJObyBpbWFnZXMgZm91bmQiCiAgICBlbmQKZW5kCgojIExpc3QgYWxsIGF2YWlsYWJsZSBpbWFnZXMKZnVuY3Rpb24gbGlzdC1pbWFnZXMKICAgIGVjaG8gIkF2YWlsYWJsZSBpbWFnZXM6IgogICAgc2V0IGltYWdlcyAkQ09ORklHX0RJUi9jcm9wcGVkLyoue2pwZyxwbmd9CiAgICBpZiB0ZXN0IC1uICIkaW1hZ2VzIgogICAgICAgIGZvciBpbWcgaW4gJGltYWdlcwogICAgICAgICAgICBlY2hvICIgICIoYmFzZW5hbWUgJGltZykKICAgICAgICBlbmQKICAgIGVsc2UKICAgICAgICBlY2hvICIgIE5vIGltYWdlcyBmb3VuZCIKICAgIGVuZAplbmQKCiMgUHJldmlldyBjdXJyZW50IGltYWdlCmZ1bmN0aW9uIGN1cnJlbnQtaW1hZ2UKICAgIHNldCBjdXJyZW50IChncmVwICcic291cmNlIicgJENPTkZJR19ESVIvY29uZmlnLmpzb25jIHwgc2VkICdzLy4qInNvdXJjZSI6ICJcKC4qXCkiLiovXDEvJykKICAgIGlmIHRlc3QgLWYgIiRjdXJyZW50IgogICAgICAgIGVjaG8gIkN1cnJlbnQgaW1hZ2U6ICIoYmFzZW5hbWUgJGN1cnJlbnQpCiAgICAgICAgaWRlbnRpZnkgIiRjdXJyZW50IiAyPi9kZXYvbnVsbCB8IGF3ayAne3ByaW50ICJEaW1lbnNpb25zOiIsICQzLCAiU2l6ZToiLCAkNy8xMDI0ICJLQiJ9JwogICAgZWxzZQogICAgICAgIGVjaG8gIk5vIGN1cnJlbnQgaW1hZ2UgZm91bmQiCiAgICBlbmQKZW5kCgojIFJlLWNyb3AgYWxsIGltYWdlcwpmdW5jdGlvbiByZWNyb3AtaW1hZ2VzCiAgICAjIENsZWFuIGN1cnJlbnQgaW1hZ2UgZmlsZXMKICAgIHJtIC1mICRDT05GSUdfRElSL2N1cnJlbnQtaW1hZ2UtKi5qcGcKICAgIHJtIC1mICRDT05GSUdfRElSL2ltYWdlLWluZGV4LnR4dAogICAgCiAgICAjIFJ1biBjcm9wIHNjcmlwdAogICAgYmFzaCAiJENPTkZJR19ESVIvY3JvcC1pbWFnZS5zaCIKICAgIAogICAgIyBSZXNldCBhbmQgc2hvdyBmaXJzdCBpbWFnZQogICAgZWNobyAwID4gIiRDT05GSUdfRElSL2ltYWdlLWluZGV4LnR4dCIKICAgIGJhc2ggIiRDT05GSUdfRElSL3JvdGF0ZS1pbWFnZXMuc2giCiAgICBjbGVhcgogICAgZmFzdGZldGNoCmVuZAoKIyBBZGQgbmV3IGltYWdlCmZ1bmN0aW9uIGFkZC1pbWFnZQogICAgaWYgdGVzdCAteiAiJGFyZ3ZbMV0iCiAgICAgICAgZWNobyAiVXNhZ2U6IGFkZC1pbWFnZSA8aW1hZ2UtZmlsZT4gW2N1c3RvbS1uYW1lXSIKICAgICAgICByZXR1cm4gMQogICAgZW5kCiAgICBpZiB0ZXN0IC1uICIkYXJndlsyXSIKICAgICAgICBjcCAiJGFyZ3ZbMV0iICIkQ09ORklHX0RJUi9pbWFnZXMvJGFyZ3ZbMl0iCiAgICAgICAgZWNobyAiQWRkZWQ6ICRhcmd2WzJdIgogICAgZWxzZQogICAgICAgIGNwICIkYXJndlsxXSIgIiRDT05GSUdfRElSL2ltYWdlcy8iCiAgICAgICAgZWNobyAiQWRkZWQ6ICIoYmFzZW5hbWUgIiRhcmd2WzFdIikKICAgIGVuZAogICAgcmVjcm9wLWltYWdlcwplbmQKCiMgUXVpY2sgcmVmcmVzaApmdW5jdGlvbiByZWZyZXNoCiAgICBjbGVhcgogICAgZmFzdGZldGNoCmVuZAoKIyBDbGVhbiBhbmQgcmVjcm9wIGFsbApmdW5jdGlvbiBjbGVhbi1hbGwKICAgIGVjaG8gIkNsZWFuaW5nIGFsbCBpbWFnZXMuLi4iCiAgICBybSAtZiAkQ09ORklHX0RJUi9jcm9wcGVkLyoue2pwZyxwbmd9CiAgICBybSAtZiAkQ09ORklHX0RJUi9jdXJyZW50LWltYWdlLSouanBnCiAgICBybSAtZiAkQ09ORklHX0RJUi9pbWFnZS1pbmRleC50eHQKICAgIGVjaG8gIuKckyBDbGVhbmVkIgogICAgcmVjcm9wLWltYWdlcwplbmQK" 644
+    
+    # File: .config/fish/functions/fish_greeting.fish
+    write_file "$HOME/.config/fish/functions/fish_greeting.fish" "ZnVuY3Rpb24gZmlzaF9ncmVldGluZwogICAgcmFuZG9tLWltYWdlCmVuZAo=" 644
+    
+    # Install dependencies
+    install_fastfetch
+    install_fish
+    
+    # Add alias
+    add_alias() {
+        local SHELL_CONFIG=""
+        if [ -f "$HOME/.bashrc" ]; then
+            SHELL_CONFIG="$HOME/.bashrc"
+        elif [ -f "$HOME/.zshrc" ]; then
+            SHELL_CONFIG="$HOME/.zshrc"
+        elif [ -f "$HOME/.config/fish/config.fish" ]; then
+            SHELL_CONFIG="$HOME/.config/fish/config.fish"
+        fi
         
-        for old in $CONFIG_DIR/current-image-*.jpg
-            if test "$old" != "$new_image"
-                rm -f "$old"
-            end
-        end
-        
-        sed -i "s|\"source\": \".*\"|\"source\": \"$new_image\"|" "$CONFIG_DIR/config.jsonc"
-        clear
-        fastfetch
-    else
-        echo "No images found"
-    end
-end
-
-# List all available images
-function list-images
-    echo "Available images:"
-    set images $CONFIG_DIR/cropped/*.{jpg,png}
-    if test -n "$images"
-        for img in $images
-            echo "  "(basename $img)
-        end
-    else
-        echo "  No images found"
-    end
-end
-
-# Preview current image
-function current-image
-    set current (grep '"source"' $CONFIG_DIR/config.jsonc | sed 's/.*"source": "\(.*\)".*/\1/')
-    if test -f "$current"
-        echo "Current image: "(basename $current)
-        identify "$current" 2>/dev/null | awk '{print "Dimensions:", $3, "Size:", $7/1024 "KB"}'
-    else
-        echo "No current image found"
-    end
-end
-
-# Re-crop all images
-function recrop-images
-    # Clean current image files
-    rm -f $CONFIG_DIR/current-image-*.jpg
-    rm -f $CONFIG_DIR/image-index.txt
+        if [ -n "$SHELL_CONFIG" ]; then
+            if ! grep -q "alias ff=" "$SHELL_CONFIG" 2>/dev/null; then
+                echo -e "${YELLOW}Adding alias to $SHELL_CONFIG...${NC}"
+                if [[ "$SHELL_CONFIG" == *"fish"* ]]; then
+                    echo 'alias ff="fastfetch"' >> "$SHELL_CONFIG"
+                else
+                    echo 'alias ff="fastfetch"' >> "$SHELL_CONFIG"
+                fi
+                echo -e "${GREEN}✓ Alias added${NC}"
+                echo -e "Run: ${YELLOW}source $SHELL_CONFIG${NC} to apply"
+            fi
+        fi
+    }
     
-    # Run crop script
-    bash "$CONFIG_DIR/crop-image.sh"
+    add_alias
     
-    # Reset and show first image
-    echo 0 > "$CONFIG_DIR/image-index.txt"
-    bash "$CONFIG_DIR/rotate-images.sh"
-    clear
-    fastfetch
-end
+    echo -e "${GREEN}Installation complete!${NC}"
+    echo -e "Run with: ${YELLOW}fastfetch${NC} or ${YELLOW}ff${NC}"
+    echo -e "\n${YELLOW}Available fish functions:${NC}"
+    echo -e "  ${GREEN}next-image${NC}     - Rotate to next image"
+    echo -e "  ${GREEN}random-image${NC}   - Show random image"
+    echo -e "  ${GREEN}recrop-images${NC}  - Re-crop all images"
+    echo -e "  ${GREEN}clean-all${NC}      - Clean and re-crop all images"
+}
 
-# Add new image
-function add-image
-    if test -z "$argv[1]"
-        echo "Usage: add-image <image-file> [custom-name]"
-        return 1
-    end
-    if test -n "$argv[2]"
-        cp "$argv[1]" "$CONFIG_DIR/images/$argv[2]"
-        echo "Added: $argv[2]"
-    else
-        cp "$argv[1]" "$CONFIG_DIR/images/"
-        echo "Added: "(basename "$argv[1]")
-    end
-    recrop-images
-end
-
-# Quick refresh
-function refresh
-    clear
-    fastfetch
-end
-
-# Clean and recrop all
-function clean-all
-    echo "Cleaning all images..."
-    rm -f $CONFIG_DIR/cropped/*.{jpg,png}
-    rm -f $CONFIG_DIR/current-image-*.jpg
-    rm -f $CONFIG_DIR/image-index.txt
-    echo "✓ Cleaned"
-    recrop-images
-end
-EOF
-
-echo -e "${GREEN}✓ Fish functions installed${NC}"
-
-echo ""
-echo -e "${YELLOW}[7/7] Creating fish greeting...${NC}"
-
-# Create fish greeting for random image on startup
-cat > "$FISH_FUNCTIONS/fish_greeting.fish" << 'EOF'
-function fish_greeting
-    random-image
-end
-EOF
-
-echo -e "${GREEN}✓ Fish greeting created${NC}"
-
-echo ""
-echo -e "${GREEN}╔════════════════════════════════════════╗${NC}"
-echo -e "${GREEN}║         Installation Complete!         ║${NC}"
-echo -e "${GREEN}╚════════════════════════════════════════╝${NC}"
-echo ""
-echo -e "${BLUE}Configuration:${NC}"
-echo "  Aspect ratio: $ASPECT_WIDTH:$ASPECT_HEIGHT"
-echo "  Max image width: ${IMAGE_WIDTH}px"
-echo "  Logo height: ${LOGO_HEIGHT} character cells"
-echo "  Image type: $SIXEL_TYPE"
-if [ "$ROUNDED_CORNERS" = true ]; then
-    echo "  Rounded corners: enabled (radius: ${CORNER_RADIUS}px)"
-else
-    echo "  Rounded corners: disabled"
-fi
-echo ""
-echo -e "${YELLOW}Next steps:${NC}"
-echo ""
-echo "1. Add images to your collection:"
-echo -e "   ${GREEN}cp /path/to/your/images/* ~/.config/fastfetch/images/${NC}"
-echo ""
-echo "2. Process your images:"
-echo -e "   ${GREEN}recrop-images${NC}"
-echo ""
-echo "3. Test the rotation:"
-echo -e "   ${GREEN}next-image${NC}"
-echo -e "   ${GREEN}random-image${NC}"
-echo ""
-echo "4. Available commands:"
-echo -e "   ${GREEN}next-image${NC}      - Switch to next image"
-echo -e "   ${GREEN}random-image${NC}    - Switch to random image"
-echo -e "   ${GREEN}list-images${NC}     - List all available images"
-echo -e "   ${GREEN}current-image${NC}   - Show current image info"
-echo -e "   ${GREEN}add-image${NC}       - Add new image (usage: add-image /path/to/image.jpg)"
-echo -e "   ${GREEN}recrop-images${NC}   - Re-crop all images"
-echo -e "   ${GREEN}clean-all${NC}       - Clean and recrop all images"
-echo -e "   ${GREEN}refresh${NC}         - Refresh display"
-echo ""
-echo -e "${BLUE}Note:${NC} Open a new terminal to see the random image on startup!"
-echo ""
-echo -e "${GREEN}Enjoy your rotating wallpapers! 🎨${NC}"
+main "$@"
