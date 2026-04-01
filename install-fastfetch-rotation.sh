@@ -22,8 +22,9 @@ ASPECT_WIDTH=1
 ASPECT_HEIGHT=1
 IMAGE_WIDTH=600
 LOGO_HEIGHT=15
-LOGO_WIDTH=15
 SIXEL_TYPE="sixel"
+ROUNDED_CORNERS=false
+CORNER_RADIUS=30
 
 # Parse command line arguments
 while [[ $# -gt 0 ]]; do
@@ -41,12 +42,16 @@ while [[ $# -gt 0 ]]; do
             LOGO_HEIGHT=$2
             shift 2
             ;;
-        --logo-width)
-            LOGO_WIDTH=$2
-            shift 2
-            ;;
         --image-type)
             SIXEL_TYPE=$2
+            shift 2
+            ;;
+        --rounded-corners)
+            ROUNDED_CORNERS=true
+            shift
+            ;;
+        --corner-radius)
+            CORNER_RADIUS=$2
             shift 2
             ;;
         --help)
@@ -56,8 +61,9 @@ while [[ $# -gt 0 ]]; do
             echo "  --aspect W:H         Aspect ratio for cropping (default: 1:1)"
             echo "  --width N            Max width in pixels (default: 600)"
             echo "  --logo-height N      Fastfetch logo height (default: 15)"
-            echo "  --logo-width N       Fastfetch logo width (default: 15)"
             echo "  --image-type TYPE    Image type (sixel, kitty, iterm2, auto) (default: sixel)"
+            echo "  --rounded-corners    Enable rounded corners on images"
+            echo "  --corner-radius N    Corner radius in pixels (default: 30)"
             echo "  --help               Show this help message"
             exit 0
             ;;
@@ -80,7 +86,7 @@ echo -e "${BLUE}Home directory: $USER_HOME${NC}"
 echo ""
 
 # Check prerequisites
-echo -e "${YELLOW}[1/6] Checking prerequisites...${NC}"
+echo -e "${YELLOW}[1/7] Checking prerequisites...${NC}"
 
 # Check if fastfetch is installed
 if ! command -v fastfetch &> /dev/null; then
@@ -97,7 +103,7 @@ fi
 echo -e "${GREEN}✓ fastfetch $(fastfetch --version | head -1)${NC}"
 
 # Check if ImageMagick is installed
-if ! command -v convert &> /dev/null; then
+if ! command -v convert &> /dev/null && ! command -v magick &> /dev/null; then
     echo -e "${RED}✗ ImageMagick is not installed${NC}"
     echo ""
     echo "Please install ImageMagick first:"
@@ -107,7 +113,7 @@ if ! command -v convert &> /dev/null; then
     echo "  macOS:          brew install imagemagick"
     exit 1
 fi
-echo -e "${GREEN}✓ ImageMagick $(convert -version | head -1 | cut -d' ' -f3)${NC}"
+echo -e "${GREEN}✓ ImageMagick installed${NC}"
 
 # Check if Fish shell is installed
 if ! command -v fish &> /dev/null; then
@@ -123,7 +129,7 @@ fi
 echo -e "${GREEN}✓ Fish shell $(fish --version | cut -d' ' -f3)${NC}"
 
 # Check terminal sixel support (optional)
-echo -e "${YELLOW}  (Optional) Checking terminal sixel support...${NC}"
+echo -e "${YELLOW}  (Optional) Checking terminal support...${NC}"
 if [[ "$TERM" == "foot" ]] || [[ "$TERM" == "xterm"* ]] || [[ "$TERM" == "kitty" ]]; then
     echo -e "${GREEN}  ✓ Terminal $TERM likely supports images${NC}"
 else
@@ -132,7 +138,7 @@ else
 fi
 
 echo ""
-echo -e "${YELLOW}[2/6] Creating directories...${NC}"
+echo -e "${YELLOW}[2/7] Creating directories...${NC}"
 
 # Create directories
 mkdir -p "$CONFIG_DIR/images"
@@ -145,9 +151,9 @@ echo -e "${GREEN}✓ Created: $CONFIG_DIR/cropped${NC}"
 echo -e "${GREEN}✓ Created: $FISH_FUNCTIONS${NC}"
 
 echo ""
-echo -e "${YELLOW}[3/6] Installing fastfetch configuration...${NC}"
+echo -e "${YELLOW}[3/7] Installing fastfetch configuration...${NC}"
 
-# Create fastfetch config with user's home directory
+# Create fastfetch config with user's home directory (height only, width auto)
 cat > "$CONFIG_DIR/config.jsonc" << EOF
 {
     "\$schema": "https://github.com/fastfetch-cli/fastfetch/raw/dev/doc/json_schema.json",
@@ -155,9 +161,8 @@ cat > "$CONFIG_DIR/config.jsonc" << EOF
         "source": "$CONFIG_DIR/current-image.jpg",
         "type": "$SIXEL_TYPE",
         "height": $LOGO_HEIGHT,
-        "width": $LOGO_WIDTH,
         "padding": {
-            "top": 1,
+            "top": 2,
             "left": 3
         }
     },
@@ -228,14 +233,11 @@ EOF
 echo -e "${GREEN}✓ Fastfetch config created${NC}"
 
 echo ""
-echo -e "${YELLOW}[4/6] Installing crop script...${NC}"
+echo -e "${YELLOW}[4/7] Installing crop script...${NC}"
 
-# Create crop script
+# Create crop script with auto-clean
 cat > "$CONFIG_DIR/crop-image.sh" << EOF
 #!/bin/bash
-# Crop script for fastfetch images
-# Crops images to $ASPECT_WIDTH:$ASPECT_HEIGHT aspect ratio
-
 INPUT_DIR="$CONFIG_DIR/images"
 OUTPUT_DIR="$CONFIG_DIR/cropped"
 mkdir -p "\$OUTPUT_DIR"
@@ -245,8 +247,18 @@ MAX_WIDTH=$IMAGE_WIDTH
 ASPECT_W=$ASPECT_WIDTH
 ASPECT_H=$ASPECT_HEIGHT
 QUALITY=90
+ROUNDED=$ROUNDED_CORNERS
+CORNER_RADIUS=$CORNER_RADIUS
 
 echo "Processing images with aspect ratio \$ASPECT_W:\$ASPECT_H..."
+
+# Clean old cropped images
+echo "Cleaning old cropped images..."
+rm -f "\$OUTPUT_DIR"/*.{jpg,png}
+echo "✓ Old images removed"
+
+# Count processed images
+count=0
 
 for ext in png jpg jpeg gif; do
     for img in "\$INPUT_DIR"/*.\$ext; do
@@ -283,6 +295,7 @@ for ext in png jpg jpeg gif; do
             
             if [ \$? -eq 0 ]; then
                 echo "✓ Processed: \$filename"
+                ((count++))
             else
                 echo "✗ Failed: \$filename"
             fi
@@ -290,14 +303,47 @@ for ext in png jpg jpeg gif; do
     done
 done
 
-echo "Done! Processed images are in \$OUTPUT_DIR"
+EOF
+
+# Add rounded corners if enabled
+if [ "$ROUNDED_CORNERS" = true ]; then
+    cat >> "$CONFIG_DIR/crop-image.sh" << 'EOF'
+
+# Add rounded corners if enabled
+if [ "$ROUNDED" = true ]; then
+    echo "Adding rounded corners (radius: ${CORNER_RADIUS}px)..."
+    for img in "$OUTPUT_DIR"/*.jpg; do
+        if [ -f "$img" ]; then
+            temp_img="/tmp/rounded_$$.jpg"
+            convert "$img" \
+                \( +clone -alpha extract \
+                   -draw "roundRectangle 0,0 %[fx:w],%[fx:h] ${CORNER_RADIUS},${CORNER_RADIUS}" \
+                   -alpha copy \) \
+                -compose Dst_In -composite \
+                "$temp_img" 2>/dev/null
+            mv "$temp_img" "$img"
+        fi
+    done
+    echo "✓ Rounded corners added"
+fi
+EOF
+fi
+
+cat >> "$CONFIG_DIR/crop-image.sh" << EOF
+
+if [ \$count -eq 0 ]; then
+    echo "⚠ No images found in \$INPUT_DIR"
+    echo "  Add images to: \$INPUT_DIR"
+else
+    echo "Done! Processed \$count images to \$OUTPUT_DIR"
+fi
 EOF
 
 chmod +x "$CONFIG_DIR/crop-image.sh"
 echo -e "${GREEN}✓ Crop script installed${NC}"
 
 echo ""
-echo -e "${YELLOW}[5/6] Installing rotate script...${NC}"
+echo -e "${YELLOW}[5/7] Installing rotate script...${NC}"
 
 # Create rotate script
 cat > "$CONFIG_DIR/rotate-images.sh" << EOF
@@ -354,7 +400,7 @@ chmod +x "$CONFIG_DIR/rotate-images.sh"
 echo -e "${GREEN}✓ Rotate script installed${NC}"
 
 echo ""
-echo -e "${YELLOW}[6/6] Installing fish functions...${NC}"
+echo -e "${YELLOW}[6/7] Installing fish functions...${NC}"
 
 # Backup existing config if needed
 if [ -f "$FISH_CONFIG" ]; then
@@ -438,8 +484,14 @@ end
 
 # Re-crop all images
 function recrop-images
+    # Clean current image files
+    rm -f $CONFIG_DIR/current-image-*.jpg
+    rm -f $CONFIG_DIR/image-index.txt
+    
+    # Run crop script
     bash "$CONFIG_DIR/crop-image.sh"
-    echo "All images recropped!"
+    
+    # Reset and show first image
     echo 0 > "$CONFIG_DIR/image-index.txt"
     bash "$CONFIG_DIR/rotate-images.sh"
     clear
@@ -467,12 +519,22 @@ function refresh
     clear
     fastfetch
 end
+
+# Clean and recrop all
+function clean-all
+    echo "Cleaning all images..."
+    rm -f $CONFIG_DIR/cropped/*.{jpg,png}
+    rm -f $CONFIG_DIR/current-image-*.jpg
+    rm -f $CONFIG_DIR/image-index.txt
+    echo "✓ Cleaned"
+    recrop-images
+end
 EOF
 
 echo -e "${GREEN}✓ Fish functions installed${NC}"
 
 echo ""
-echo -e "${YELLOW}Creating fish greeting...${NC}"
+echo -e "${YELLOW}[7/7] Creating fish greeting...${NC}"
 
 # Create fish greeting for random image on startup
 cat > "$FISH_FUNCTIONS/fish_greeting.fish" << 'EOF'
@@ -491,8 +553,13 @@ echo ""
 echo -e "${BLUE}Configuration:${NC}"
 echo "  Aspect ratio: $ASPECT_WIDTH:$ASPECT_HEIGHT"
 echo "  Max image width: ${IMAGE_WIDTH}px"
-echo "  Logo size: ${LOGO_HEIGHT}x${LOGO_WIDTH}"
+echo "  Logo height: ${LOGO_HEIGHT} character cells"
 echo "  Image type: $SIXEL_TYPE"
+if [ "$ROUNDED_CORNERS" = true ]; then
+    echo "  Rounded corners: enabled (radius: ${CORNER_RADIUS}px)"
+else
+    echo "  Rounded corners: disabled"
+fi
 echo ""
 echo -e "${YELLOW}Next steps:${NC}"
 echo ""
@@ -513,6 +580,7 @@ echo -e "   ${GREEN}list-images${NC}     - List all available images"
 echo -e "   ${GREEN}current-image${NC}   - Show current image info"
 echo -e "   ${GREEN}add-image${NC}       - Add new image (usage: add-image /path/to/image.jpg)"
 echo -e "   ${GREEN}recrop-images${NC}   - Re-crop all images"
+echo -e "   ${GREEN}clean-all${NC}       - Clean and recrop all images"
 echo -e "   ${GREEN}refresh${NC}         - Refresh display"
 echo ""
 echo -e "${BLUE}Note:${NC} Open a new terminal to see the random image on startup!"
