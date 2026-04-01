@@ -157,7 +157,7 @@ cat > "$CONFIG_DIR/config.jsonc" << EOF
         "height": $LOGO_HEIGHT,
         "width": $LOGO_WIDTH,
         "padding": {
-            "top": 0,
+            "top": 1,
             "left": 3
         }
     },
