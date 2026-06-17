@@ -4,10 +4,6 @@
 
 A complete solution for rotating and randomizing images in fastfetch with automatic cropping, terminal cache bypass, and seamless Fish shell integration.
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Fish Shell](https://img.shields.io/badge/shell-fish-blue.svg)](https://fishshell.com/)
-[![Fastfetch](https://img.shields.io/badge/fastfetch-2.x-green.svg)](https://github.com/fastfetch-cli/fastfetch)
-
 ## ✨ Features
 
 - 🔄 **Manual Image Rotation** - Switch between images with a simple command
