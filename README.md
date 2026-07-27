@@ -1,5 +1,3 @@
-
-```markdown
 # Fastfetch Image Rotation System
 
 A complete solution for rotating and randomizing images in fastfetch with automatic cropping, terminal cache bypass, and seamless Fish shell integration.
@@ -257,7 +255,6 @@ Edit `~/.config/fastfetch/config.jsonc` and adjust:
     "height": 20,
     "width": 30
 }
-```
 
 ## 🎯 Tips
 
